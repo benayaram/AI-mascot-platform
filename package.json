@@ -1,6 +1,6 @@
 {
   "name": "benai-studio",
-  "version": "1.0.0",
+  "version": "2.0.0-beta.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -18,11 +18,15 @@
     "test:cloud": "node --test --test-concurrency=1 tests/cloud/*.test.js",
     "format": "prettier --write src server tests public/*.js public/*.html public/*.css *.json *.js *.html docs/*.md README.md",
     "format:check": "prettier --check src server tests public/*.js public/*.html public/*.css *.json *.js *.html docs/*.md README.md",
-    "test:models": "BENAI_TEST_MODELS=1 node --test tests/models.test.js"
+    "test:models": "BENAI_TEST_MODELS=1 node --test tests/models.test.js",
+    "assets:local": "node scripts/prepare-browser-assets.js",
+    "test:realtime": "BENAI_TEST_REALTIME=1 node --test tests/realtime.test.js",
+    "test:neural": "BENAI_TEST_NEURAL=1 node --test tests/neural.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
     "@aws-sdk/s3-request-presigner": "^3.1150.0",
+    "@mediapipe/tasks-vision": "^1.1.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
@@ -34,6 +38,7 @@
     "react-router-dom": "^7.9.0",
     "sharp": "^0.35.5",
     "stripe": "^19.0.0",
+    "ws": "^8.22.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {

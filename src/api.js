@@ -27,3 +27,5 @@ export async function api(path, options = {}) {
   if (options.binary) return response.blob();
   return response.json();
 }
+
+export const getCsrf = () => csrf;

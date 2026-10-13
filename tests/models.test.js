@@ -64,7 +64,9 @@ test(
       assert.equal(r.status, 200);
       const image = await r.json();
       assert.equal(image.procedural, undefined);
-      const file = await fetch("http://127.0.0.1:3140" + image.image);
+      const file = await fetch("http://127.0.0.1:3140" + image.image, {
+        headers,
+      });
       assert.equal(file.status, 200);
       const bytes = Buffer.from(await file.arrayBuffer());
       assert.ok(

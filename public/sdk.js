@@ -54,15 +54,15 @@ export class BENAIAvatar {
         this.mouth = rendered.querySelector("#mouth");
         this.applyAppearance();
       } else {
-        const image = document.createElement("img");
-        image.src = url;
-        image.alt = this.options.name;
-        Object.assign(image.style, {
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
+        const { createPortraitRig } = await import("/portrait-rig.js");
+        this.rig = await createPortraitRig(this.frame, {
+          image: url,
+          name: this.options.name,
         });
-        this.frame.replaceChildren(image);
+        if (this.destroyed) {
+          this.rig.destroy();
+          return;
+        }
       }
       this.emit("ready", { name: this.options.name });
     } catch (e) {
@@ -115,6 +115,7 @@ export class BENAIAvatar {
       let total = 0;
       for (const n of values) total += ((n - 128) / 128) ** 2;
       const level = Math.sqrt(total / values.length);
+      this.rig?.setLevel(Math.min(1, level * 8));
       this.mouth?.setAttribute(
         "transform",
         `translate(160 197) scale(1 ${Math.max(0.2, Math.min(3, level * 20))})`,
@@ -164,6 +165,7 @@ export class BENAIAvatar {
     this.audio?.pause();
     this.context?.close().catch(() => {});
     this.context = null;
+    this.rig?.setLevel(0);
     this.mouth?.setAttribute("transform", "translate(160 197) scale(1 1)");
     if (this.frame) this.frame.style.transform = "";
     this.emit("state", "idle");
@@ -171,6 +173,7 @@ export class BENAIAvatar {
   destroy() {
     this.stop();
     this.destroyed = true;
+    this.rig?.destroy();
     this.listeners.clear();
     this.element.replaceChildren();
   }

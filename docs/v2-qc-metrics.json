@@ -1,0 +1,42 @@
+{
+  "hardware": {
+    "cpu_threads": 5,
+    "ram_gib": 33,
+    "gpu": false
+  },
+  "voice_turns": [
+    {
+      "first_token_ms": 1366,
+      "audio_ready_ms": 3444
+    },
+    {
+      "first_token_ms": 328,
+      "audio_ready_ms": 546
+    },
+    {
+      "first_token_ms": 433,
+      "audio_ready_ms": 1573
+    },
+    {
+      "transcription_ms": 731,
+      "first_token_ms": 2409,
+      "audio_ready_ms": 4619
+    }
+  ],
+  "typed_first_token_median_ms": 433,
+  "typed_audio_ready_median_ms": 1573,
+  "neural": {
+    "created_at": "2026-10-13T19:00:20.064Z",
+    "avatar_id": "amara",
+    "status": "completed",
+    "provider_id": "local",
+    "storage_key": null,
+    "duration": 1.4164375,
+    "model": "MuseTalk-1.5",
+    "render_ms": 77053,
+    "fps": 12,
+    "device": "cpu",
+    "total_ms": 78429
+  },
+  "sample_limit": "Three short typed turns and one short recorded turn; no concurrency SLA or full load-test claim."
+}

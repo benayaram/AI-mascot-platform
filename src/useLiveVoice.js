@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
-export function useLiveVoice({ onTranscript, onError, busy, speaking }) {
+export function useLiveVoice({
+  onTranscript,
+  onAudio,
+  onError,
+  busy,
+  speaking,
+}) {
   const latest = useRef();
-  latest.current = { onTranscript, onError, busy, speaking };
+  latest.current = { onTranscript, onAudio, onError, busy, speaking };
   const engine = useRef(null),
     [active, setActive] = useState(false),
     [listening, setListening] = useState(false);
@@ -69,6 +75,12 @@ export function useLiveVoice({ onTranscript, onError, busy, speaking }) {
             "voice.webm",
           );
           try {
+            if (latest.current.onAudio) {
+              await latest.current.onAudio(
+                new Blob(e.chunks, { type: e.recorder.mimeType }),
+              );
+              return;
+            }
             const result = await api("/transcribe", {
               method: "POST",
               body: form,

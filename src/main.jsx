@@ -63,6 +63,8 @@ import {
 import { api, setCsrf } from "./api";
 import "./style.css";
 import { useLiveVoice } from "./useLiveVoice";
+import { useRealtime } from "./useRealtime";
+import PortraitAvatar from "./PortraitAvatar";
 const Auth = createContext(null),
   Toast = createContext(() => {});
 const colors = {
@@ -359,6 +361,58 @@ function Landing() {
             <Code2 size={17} /> Made to integrate
           </span>
         </div>
+        <section className="landing-section">
+          <span className="eyebrow">
+            BENAI V2 · YOUR MODELS. YOUR CHARACTERS.
+          </span>
+          <div className="section-heading">
+            <div>
+              <h2>
+                A human presence.
+                <br />
+                An entirely local AI.
+              </h2>
+              <p>
+                Realistic portraits, streaming voice, and neural video export —
+                powered by open-weight models on your own computer.
+              </p>
+            </div>
+            <Link to="/studio" className="button">
+              Try the live studio <ArrowRight size={16} />
+            </Link>
+          </div>
+          <div className="character-grid realistic-showcase">
+            {[
+              ["amara", "Amara", "A thoughtful AI host"],
+              ["milo", "Milo", "A friendly customer guide"],
+              ["elena", "Elena", "An encouraging tutor"],
+            ].map(([id, name, description]) => (
+              <article key={id} className="character-card">
+                <div className="character-image">
+                  <img
+                    src={"/realistic/" + id + ".png"}
+                    alt={name + " synthetic portrait"}
+                  />
+                  <span className="character-badge">
+                    Synthetic AI character
+                  </span>
+                </div>
+                <div className="character-info">
+                  <h3>{name}</h3>
+                  <p>{description}</p>
+                  <Link className="text-link" to={"/studio?avatar=" + id}>
+                    Talk with {name}
+                    <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="muted">
+            Live visuals use local face-mesh animation. Neural talking-head
+            videos render as queued jobs on CPU.
+          </p>
+        </section>
         <section id="features" className="landing-section">
           <span className="eyebrow">ONE STUDIO. SO MANY POSSIBILITIES.</span>
           <h2>
@@ -737,7 +791,7 @@ function Layout() {
             <span className="status-pill">
               <span className="live-dot" />
               {providers?.ai
-                ? "AI connected"
+                ? "V2 · Local AI"
                 : providers?.demo
                   ? "Demo mode"
                   : "AI offline"}
@@ -1034,6 +1088,7 @@ function Avatars() {
   }, [location.search]);
   const filtered = avatars.filter(
     (a) =>
+      (tab !== "Realistic" || a.kind === "realistic") &&
       (tab !== "My avatars" || a.owner_id === user.id) &&
       (tab !== "Community" || a.public) &&
       (category === "All categories" || a.category === category) &&
@@ -1055,7 +1110,7 @@ function Avatars() {
       </PageHeader>
       <div className="library-toolbar">
         <div className="tabs">
-          {["All avatars", "My avatars", "Community"].map((t) => (
+          {["All avatars", "Realistic", "My avatars", "Community"].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -1130,9 +1185,16 @@ function Avatars() {
   );
 }
 function AvatarEditor({ avatar, onClose, onSaved }) {
+  const [recent, setRecent] = useState([]);
+  useEffect(() => {
+    api("/assets")
+      .then((r) => setRecent(r.assets))
+      .catch(() => {});
+  }, []);
   const { user, refresh, providers } = useContext(Auth),
     toast = useContext(Toast);
-  const [image, setImage] = useState(avatar?.image || "/avatars/nova.svg"),
+  const [kind, setKind] = useState(avatar?.kind || "illustrated"),
+    [image, setImage] = useState(avatar?.image || "/avatars/nova.svg"),
     [busy, setBusy] = useState(false),
     [generation, setGeneration] = useState(false),
     [prompt, setPrompt] = useState(
@@ -1144,10 +1206,10 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
     if (!file) return;
     const form = new FormData();
     form.append("image", file);
+    form.append("kind", kind);
     setBusy(true);
     try {
-      const r = await api("/uploads", { method: "POST", body: form });
-      setImage(r.image);
+      setImage((await api("/uploads", { method: "POST", body: form })).image);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1156,16 +1218,20 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
   }
   async function generate() {
     setGeneration(true);
+    setError("");
     try {
-      const r = await api("/avatars/generate", {
+      const result = await api("/avatars/generate", {
         method: "POST",
-        body: { prompt },
+        body: {
+          prompt,
+          style: kind === "realistic" ? "realistic" : "illustration",
+        },
       });
-      setImage(r.image);
+      setImage(result.image);
       toast(
-        r.procedural
-          ? "Original illustration created."
-          : "AI avatar image created.",
+        result.procedural
+          ? "Illustration created."
+          : "Your local model created a new AI portrait.",
       );
       await refresh();
     } catch (e) {
@@ -1178,19 +1244,19 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const f = new FormData(e.currentTarget);
-    const values = Object.fromEntries(f);
-    values.public = f.get("public") === "on";
+    const form = new FormData(e.currentTarget),
+      values = Object.fromEntries(form);
+    values.kind = kind;
+    values.rights_confirmed = form.get("rights_confirmed") === "on";
+    values.public = form.get("public") === "on";
     values.appearance = {
-      glasses: f.get("glasses") === "on",
-      gesture: f.get("gesture") === "on",
-      suitColor: f.get("suitColor"),
-      hairColor: f.get("hairColor"),
+      glasses: form.get("glasses") === "on",
+      gesture: form.get("gesture") === "on",
+      suitColor: form.get("suitColor") || "#9d77e8",
+      hairColor: form.get("hairColor") || "#9d77e8",
     };
-    delete values.glasses;
-    delete values.gesture;
-    delete values.suitColor;
-    delete values.hairColor;
+    for (const key of ["glasses", "gesture", "suitColor", "hairColor"])
+      delete values[key];
     values.image = image;
     values.color = colors[image.split("/").pop().split(".")[0]] || "#e7ddfc";
     try {
@@ -1217,28 +1283,55 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
       setBusy(false);
     }
   }
+  function changeKind(value) {
+    setKind(value);
+    setImage(
+      value === "realistic" ? "/realistic/amara.png" : "/avatars/nova.svg",
+    );
+    setPrompt(
+      value === "realistic"
+        ? "A fictional friendly adult with natural hair, a professional shirt, front-facing portrait, soft studio light"
+        : "A friendly purple robot with a curious personality",
+    );
+  }
   return (
     <Modal
       title={avatar ? "Edit " + avatar.name : "A new character starts here"}
       onClose={onClose}
     >
       <form onSubmit={save}>
+        <label>
+          Avatar style
+          <select value={kind} onChange={(e) => changeKind(e.target.value)}>
+            <option value="illustrated">Illustrated character</option>
+            <option value="realistic">Realistic human portrait</option>
+          </select>
+        </label>
         <div className="avatar-designer">
           <img className="designer-preview" src={image} alt="Avatar preview" />
           <div>
             <label>Choose a starting look</label>
             <div className="preset-picker">
-              {presets.map((x) => (
-                <button
-                  type="button"
-                  className={image.includes(x) ? "selected" : ""}
-                  key={x}
-                  aria-label={"Choose " + x}
-                  onClick={() => setImage("/avatars/" + x + ".svg")}
-                >
-                  <img src={"/avatars/" + x + ".svg"} alt="" />
-                </button>
-              ))}
+              {(kind === "realistic"
+                ? ["amara", "milo", "elena"]
+                : presets
+              ).map((name) => {
+                const src =
+                  kind === "realistic"
+                    ? "/realistic/" + name + ".png"
+                    : "/avatars/" + name + ".svg";
+                return (
+                  <button
+                    type="button"
+                    key={name}
+                    className={image === src ? "selected" : ""}
+                    aria-label={"Choose " + name}
+                    onClick={() => setImage(src)}
+                  >
+                    <img src={src} alt="" />
+                  </button>
+                );
+              })}
             </div>
             <label className="button ghost upload-button">
               <Upload size={15} />
@@ -1250,7 +1343,7 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
                 hidden
               />
             </label>
-            <small>PNG, JPG, WebP · Up to 5 MB</small>
+            <small>One front-facing face · PNG/JPG/WebP · 5 MB maximum</small>
           </div>
         </div>
         {!avatar && (
@@ -1262,7 +1355,6 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 minLength={10}
-                placeholder="A friendly robot, with a touch of purple…"
               />
               <Button
                 type="button"
@@ -1275,9 +1367,9 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
               </Button>
             </div>
             <small>
-              {providers?.images
-                ? "Create an image with your connected image model."
-                : "Free illustration generator. Connect a local diffusion model for AI-generated images."}
+              {kind === "realistic"
+                ? "Self-hosted portrait generation can take about a minute on a CPU. The person is synthetic."
+                : "Local open-weight image model; procedural fallback if the model is offline."}
             </small>
           </div>
         )}
@@ -1305,48 +1397,72 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
                 "Education",
                 "Business",
                 "Companion",
-              ].map((x) => (
-                <option key={x}>{x}</option>
+              ].map((name) => (
+                <option key={name}>{name}</option>
               ))}
             </select>
           </label>
         </div>
-        <div className="form-grid">
-          <label>
-            Suit color
-            <input
-              type="color"
-              name="suitColor"
-              defaultValue={avatar?.appearance?.suitColor || "#9d77e8"}
-            />
-          </label>
-          <label>
-            Hair color
-            <input
-              type="color"
-              name="hairColor"
-              defaultValue={avatar?.appearance?.hairColor || "#9d77e8"}
-            />
-          </label>
-        </div>
-        <div className="form-grid">
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              name="glasses"
-              defaultChecked={avatar?.appearance?.glasses}
-            />
-            Add glasses
-          </label>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              name="gesture"
-              defaultChecked={avatar?.appearance?.gesture !== false}
-            />
-            Natural gestures
-          </label>
-        </div>
+        {kind === "illustrated" && (
+          <>
+            <div className="form-grid">
+              <label>
+                Suit color
+                <input
+                  type="color"
+                  name="suitColor"
+                  defaultValue={avatar?.appearance?.suitColor || "#9d77e8"}
+                />
+              </label>
+              <label>
+                Hair color
+                <input
+                  type="color"
+                  name="hairColor"
+                  defaultValue={avatar?.appearance?.hairColor || "#9d77e8"}
+                />
+              </label>
+            </div>
+            <div className="form-grid">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  name="glasses"
+                  defaultChecked={avatar?.appearance?.glasses}
+                />
+                Add glasses
+              </label>
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  name="gesture"
+                  defaultChecked={avatar?.appearance?.gesture !== false}
+                />
+                Natural gestures
+              </label>
+            </div>
+          </>
+        )}
+        {recent.length > 0 && (
+          <>
+            <label>Your recent portraits</label>
+            <div className="preset-picker">
+              {recent.slice(0, 8).map((asset) => (
+                <button
+                  type="button"
+                  key={asset.id}
+                  onClick={() => {
+                    setImage(asset.image);
+                    setKind(asset.kind);
+                  }}
+                  aria-label="Use saved portrait"
+                >
+                  <img src={asset.image} alt="Saved portrait" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <label>
           A short introduction
           <textarea
@@ -1356,7 +1472,6 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
             required
             minLength={3}
             maxLength={300}
-            placeholder="What makes this character special?"
           />
         </label>
         <label>
@@ -1373,26 +1488,35 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
             maxLength={4000}
           />
         </label>
-        <div className="form-grid">
-          <label>
-            Voice style
-            <select name="voice" defaultValue={avatar?.voice || "coral"}>
-              {["coral", "alloy", "ash", "sage", "verse"].map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
+        <label>
+          Voice style
+          <select name="voice" defaultValue={avatar?.voice || "coral"}>
+            {["coral", "alloy", "ash", "sage", "verse"].map((name) => (
+              <option key={name} value={name}>
+                {
+                  {
+                    coral: "Warm · LJSpeech",
+                    alloy: "Neutral · LJSpeech",
+                    ash: "Male · Bryce",
+                    sage: "Calm · LJSpeech",
+                    verse: "Bright · LJSpeech",
+                  }[name]
+                }
+              </option>
+            ))}
+          </select>
+        </label>
+        {kind === "realistic" && (
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              name="rights_confirmed"
+              required
+              defaultChecked={avatar?.rights_confirmed}
+            />
+            I own this portrait or have permission to use it as an AI avatar.
           </label>
-          {user.role === "admin" && (
-            <label>
-              HeyGen avatar ID (optional)
-              <input
-                name="provider_avatar_id"
-                defaultValue={avatar?.provider_avatar_id || ""}
-                placeholder="For optional photorealistic video"
-              />
-            </label>
-          )}
-        </div>
+        )}
         {user.role === "admin" && (
           <label className="checkbox">
             <input
@@ -1432,7 +1556,14 @@ function AvatarEditor({ avatar, onClose, onSaved }) {
     </Modal>
   );
 }
-function LiveAvatar({ avatar, speaking, level = 0 }) {
+function LiveAvatar(props) {
+  return props.avatar?.kind === "realistic" ? (
+    <PortraitAvatar {...props} />
+  ) : (
+    <IllustratedAvatar {...props} />
+  );
+}
+function IllustratedAvatar({ avatar, speaking, level = 0 }) {
   const [svg, setSvg] = useState("");
   useEffect(() => {
     setSvg("");
@@ -1484,7 +1615,7 @@ function Studio() {
     location = useLocation(),
     toast = useContext(Toast);
   const params = new URLSearchParams(location.search);
-  const [selected, setSelected] = useState(params.get("avatar") || "nova"),
+  const [selected, setSelected] = useState(params.get("avatar") || "amara"),
     [conversation, setConversation] = useState(
       params.get("conversation") || undefined,
     ),
@@ -1506,6 +1637,7 @@ function Studio() {
     busy,
     speaking,
     onTranscript: (message) => send(message),
+    onAudio: (blob) => sendAudio(blob),
     onError: (message) => toast(message, "error"),
   });
   const avatar = avatars.find((a) => a.id === selected) || avatars[0];
@@ -1532,7 +1664,8 @@ function Studio() {
         .catch((e) => toast(e.message, "error"));
   }, [location.search]);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const container = end.current?.parentElement;
+    container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
   function stopAudio() {
     audio.current?.pause();
@@ -1541,15 +1674,17 @@ function Studio() {
     setLevel(0);
     cancelAnimationFrame(anim.current);
   }
-  async function say(content) {
+  async function say(content, suppliedAudio = null) {
     stopAudio();
     try {
       if (providers?.tts) {
-        const blob = await api("/tts", {
-          method: "POST",
-          body: { text: content.slice(0, 4000), voice: avatar.voice },
-          binary: true,
-        });
+        const blob =
+          suppliedAudio ||
+          (await api("/tts", {
+            method: "POST",
+            body: { text: content.slice(0, 4000), voice: avatar.voice },
+            binary: true,
+          }));
         if (!alive.current) return;
         const url = URL.createObjectURL(blob);
         const a = new Audio(url);
@@ -1595,29 +1730,87 @@ function Studio() {
       toast(e.message, "error");
     }
   }
+  const [timing, setTiming] = useState(null),
+    [modelState, setModelState] = useState("ready");
+  const activeTurn = useRef(null);
+  const realtime = useRealtime({
+    onInterrupt: stopAudio,
+    onEvent: (event) => {
+      if (event.type === "state") setModelState(event.state);
+      if (event.type === "transcript" && activeTurn.current?.audio)
+        setMessages((m) => [...m, { role: "user", content: event.text }]);
+      if (event.type === "token")
+        setMessages((m) => {
+          const last = m.at(-1);
+          if (last?.streaming)
+            return [
+              ...m.slice(0, -1),
+              { ...last, content: last.content + event.token },
+            ];
+          return [
+            ...m,
+            { role: "assistant", content: event.token, streaming: true },
+          ];
+        });
+      if (event.type === "reply") {
+        setConversation(event.conversation_id);
+        setMessages((m) => {
+          const last = m.at(-1);
+          return last?.streaming
+            ? [...m.slice(0, -1), { role: "assistant", content: event.content }]
+            : m;
+        });
+      }
+      if (event.type === "audio" && voice) {
+        const bytes = Uint8Array.from(atob(event.audio), (c) =>
+          c.charCodeAt(0),
+        );
+        say("", new Blob([bytes], { type: event.mime }));
+      }
+      if (event.type === "done") {
+        setTiming(event.timing);
+        refresh();
+      }
+    },
+  });
   async function send(message = text) {
-    if (!message.trim() || busy) return;
+    if (!message.trim() || busy || !avatar) return;
     setText("");
     setBusy(true);
+    activeTurn.current = { audio: false };
     setMessages((m) => [...m, { role: "user", content: message }]);
     try {
-      const r = await api("/chat", {
-        method: "POST",
-        body: { avatar_id: avatar.id, message, conversation_id: conversation },
+      await realtime.turn({
+        avatar_id: avatar.id,
+        conversation_id: conversation,
+        text: message,
+        speak: voice,
       });
-      if (!alive.current) return;
-      setConversation(r.conversation_id);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: r.content, demo: r.demo },
-      ]);
-      await refresh();
-      if (voice) await say(r.content);
     } catch (e) {
-      toast(e.message, "error");
-      setMessages((m) => [...m, { role: "error", content: e.message }]);
+      if (alive.current) {
+        toast(e.message, "error");
+        setMessages((m) => [...m, { role: "error", content: e.message }]);
+      }
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
+      activeTurn.current = null;
+    }
+  }
+  async function sendAudio(blob) {
+    if (busy || !avatar) return;
+    setBusy(true);
+    activeTurn.current = { audio: true };
+    try {
+      await realtime.audio(blob, {
+        avatar_id: avatar.id,
+        conversation_id: conversation,
+        speak: voice,
+      });
+    } catch (e) {
+      if (alive.current) toast(e.message, "error");
+    } finally {
+      if (alive.current) setBusy(false);
+      activeTurn.current = null;
     }
   }
   async function record() {
@@ -1642,18 +1835,7 @@ function Studio() {
         stream.current?.getTracks().forEach((t) => t.stop());
         if (!alive.current) return;
         setRecording(false);
-        const form = new FormData();
-        form.append(
-          "audio",
-          new Blob(chunks, { type: recorder.mimeType }),
-          "speech.webm",
-        );
-        try {
-          const r = await api("/transcribe", { method: "POST", body: form });
-          if (alive.current && r.text.trim()) await send(r.text);
-        } catch (e) {
-          toast(e.message, "error");
-        }
+        await sendAudio(new Blob(chunks, { type: recorder.mimeType }));
       };
       recorder.start();
       setRecording(true);
@@ -1684,6 +1866,7 @@ function Studio() {
         </Button>
         <Button
           variant="ghost"
+          disabled={busy}
           onClick={() => {
             stopAudio();
             setConversation(undefined);
@@ -1736,10 +1919,17 @@ function Studio() {
                 : "Say hello. Make a connection."}
             </small>
           </div>
+          {timing && (
+            <div className="rig-metrics">
+              <span>First token: {timing.first_token_ms} ms</span>
+              <span>Audio ready: {timing.audio_ready_ms} ms</span>
+            </div>
+          )}
           <label className="stage-select">
             Choose your character
             <select
               value={selected}
+              disabled={busy}
               onChange={(e) => {
                 stopAudio();
                 live.stop();
@@ -1757,7 +1947,9 @@ function Studio() {
           </label>
           <small className="stage-disclaimer">
             {providers?.tts
-              ? "Local neural voice · Audio-responsive animation"
+              ? avatar?.kind === "realistic"
+                ? "Live face mesh · Self-hosted voice"
+                : "Local neural voice · Audio-responsive animation"
               : "Browser voice · Simplified speech animation"}
           </small>
         </section>
@@ -1771,7 +1963,7 @@ function Studio() {
                 <strong>Chat with {avatar?.name}</strong>
                 <small>
                   {providers?.ai
-                    ? "Powered by your connected model"
+                    ? "Self-hosted streaming AI · No provider key"
                     : "Demo conversation · Sample responses"}
                 </small>
               </div>
@@ -1779,7 +1971,10 @@ function Studio() {
             <button
               className="icon-button"
               aria-label="Stop speech"
-              onClick={stopAudio}
+              onClick={() => {
+                realtime.interrupt();
+                stopAudio();
+              }}
             >
               <StopCircle size={18} />
             </button>
@@ -1837,7 +2032,13 @@ function Studio() {
                 <i />
                 <i />
                 <i />
-                <span>{avatar?.name} is thinking…</span>
+                <span>
+                  {modelState === "synthesizing"
+                    ? "Preparing voice…"
+                    : modelState === "transcribing"
+                      ? "Listening to your recording…"
+                      : avatar?.name + " is thinking…"}
+                </span>
               </div>
             )}
             <div ref={end} />
@@ -2054,12 +2255,16 @@ function Videos() {
       <div className="video-workspace">
         <div className="video-preview panel">
           <LiveAvatar avatar={a} speaking={false} />
-          <span className="preview-label">ANIMATED PORTRAIT · 640 × 640</span>
+          <span className="preview-label">
+            {a?.kind === "realistic"
+              ? "MUSETALK NEURAL VIDEO · CPU QUEUE"
+              : "ILLUSTRATED VIDEO · 640 × 640"}
+          </span>
           <h3>{a?.name}</h3>
           <p>
-            Audio-responsive animation with a local neural voice.
-            <br />
-            Custom images use a gentle portrait animation.
+            {a?.kind === "realistic"
+              ? "Local neural lip sync. CPU renders are queued and take longer than playback."
+              : "Audio-responsive illustration with a local neural voice."}
           </p>
         </div>
         <form className="panel video-form" onSubmit={render}>
@@ -2068,7 +2273,14 @@ function Videos() {
             Character
             <select
               value={selected}
-              onChange={(e) => setSelected(e.target.value)}
+              onChange={(e) => {
+                setSelected(e.target.value);
+                if (
+                  avatars.find((a) => a.id === e.target.value)?.kind ===
+                  "realistic"
+                )
+                  setScript("Hello, welcome to BENAI.");
+              }}
             >
               {avatars.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -2085,17 +2297,20 @@ function Videos() {
               onChange={(e) => setScript(e.target.value)}
               required
               minLength={10}
-              maxLength={1000}
+              maxLength={a?.kind === "realistic" ? 80 : 1000}
             />
             <small>
-              {script.length} / 1,000 characters · 60 seconds maximum
+              {a?.kind === "realistic"
+                ? script.length + " / 80 characters · 6 seconds maximum on CPU"
+                : script.length + " / 1,000 characters · 60 seconds maximum"}
             </small>
           </label>
           <div className="info-bar">
             <Info size={17} />
             <p>
-              Free tier includes one local video per month. Animated portraits
-              use a stylized mouth animation, not photorealistic lip sync.
+              Free tier includes one video per month. Realistic portraits use
+              the self-hosted neural worker; illustrated characters use the
+              lightweight renderer. Keep realistic scripts short on CPU.
             </p>
           </div>
           <Button loading={busy} variant="full">
@@ -2649,11 +2864,12 @@ function Admin() {
             </div>
             <div className="provider-grid">
               {[
-                ["ai", "AI conversations", "Local model or OpenAI"],
+                ["ai", "AI conversations", "Self-hosted Qwen"],
                 ["tts", "Speech synthesis", "Local Piper voice"],
                 ["stt", "Voice recognition", "Local Whisper model"],
-                ["localVideo", "Animated video", "FFmpeg + local speech"],
-                ["images", "AI image generation", "Local diffusion or OpenAI"],
+                ["localVideo", "Illustrated video", "FFmpeg + local speech"],
+                ["video", "Realistic neural video", "Self-hosted MuseTalk"],
+                ["images", "AI image generation", "Self-hosted Tiny-SD"],
                 ["billing", "Subscriptions", "Optional Stripe"],
               ].map(([key, title, desc]) => (
                 <div key={key}>

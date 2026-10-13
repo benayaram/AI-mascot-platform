@@ -161,6 +161,24 @@ export const store = {
       }
     }
   },
+  async ensureInventory(userId, kind, count) {
+    if (remote) {
+      try {
+        await remote
+          .collection("usage")
+          .updateOne(
+            { user_id: userId, period: "inventory", kind },
+            { $setOnInsert: { count } },
+            { upsert: true },
+          );
+      } catch (e) {
+        if (e.code !== 11000) throw e;
+      }
+    } else
+      local
+        .prepare("INSERT OR IGNORE INTO usage VALUES (?,?,?,?)")
+        .run(userId, "inventory", kind, count);
+  },
   async reserve(userId, period, kind, n, limit) {
     if (remote) {
       const col = remote.collection("usage");

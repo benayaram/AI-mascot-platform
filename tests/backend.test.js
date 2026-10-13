@@ -90,7 +90,8 @@ before(async () => {
 });
 after(async () => {
   child?.kill("SIGTERM");
-  if (child) await new Promise((r) => child.once("close", r));
+  if (child && child.exitCode === null)
+    await new Promise((r) => child.once("close", r));
   rmSync(dir, { recursive: true, force: true });
 });
 test("password validation, login failures, and sanitized account data", async () => {
@@ -150,7 +151,7 @@ test("CSRF protection and role-based administrative access", async () => {
 test("six original presets and private avatar ownership", async () => {
   assert.equal(
     (await request("/avatars", { session: alice })).data.avatars.length,
-    6,
+    9,
   );
   const r = await request("/avatars", {
     method: "POST",
@@ -359,7 +360,9 @@ test("free illustration generation returns an actual PNG and records usage", asy
   });
   assert.equal(r.status, 200);
   assert.equal(r.data.procedural, true);
-  const file = await fetch(base + r.data.image);
+  const file = await fetch(base + r.data.image, {
+    headers: { Cookie: alice.cookie },
+  });
   assert.equal(file.status, 200);
   assert.equal(file.headers.get("content-type"), "image/png");
   assert.equal(
@@ -431,4 +434,124 @@ test("revoking keys and logging out invalidates access immediately", async () =>
     200,
   );
   assert.equal((await request("/auth/me", { session: alice })).status, 401);
+});
+
+test("realistic avatars require explicit portrait permission", async () => {
+  const r = await request("/avatars", {
+    method: "POST",
+    session: bob,
+    body: {
+      name: "Human guide",
+      description: "A realistic AI host",
+      category: "Companion",
+      prompt: "You are a concise and helpful AI host.",
+      image: "/realistic/amara.png",
+      kind: "realistic",
+      rights_confirmed: false,
+    },
+  });
+  assert.equal(r.status, 400);
+});
+test("private portrait media and reuse are isolated across accounts", async () => {
+  const sharp = (await import("sharp")).default;
+  const png = await sharp({
+    create: { width: 8, height: 8, channels: 3, background: "#9876de" },
+  })
+    .png()
+    .toBuffer();
+  const form = new FormData();
+  form.append("image", new Blob([png], { type: "image/png" }), "private.png");
+  const r = await fetch(base + "/api/uploads", {
+    method: "POST",
+    headers: { Cookie: bob.cookie, "X-CSRF-Token": bob.csrf },
+    body: form,
+  });
+  assert.equal(r.status, 201);
+  const { image } = await r.json();
+  assert.equal((await fetch(base + image)).status, 404);
+  assert.equal(
+    (await fetch(base + image, { headers: { Cookie: bob.cookie } })).status,
+    200,
+  );
+  assert.equal(
+    (await fetch(base + image, { headers: { Cookie: admin.cookie } })).status,
+    200,
+  );
+  const create = await request("/avatars", {
+    method: "POST",
+    session: admin,
+    body: {
+      name: "Admin image",
+      description: "A permitted admin inspection",
+      category: "Creative",
+      prompt: "Be a helpful and honest AI assistant",
+      image,
+    },
+  });
+  assert.equal(create.status, 201);
+  const other = await registerTestUser("privacy");
+  assert.equal(
+    (await fetch(base + image, { headers: { Cookie: other.cookie } })).status,
+    404,
+  );
+  assert.equal(
+    (
+      await request("/avatars", {
+        method: "POST",
+        session: other,
+        body: {
+          name: "Copied photo",
+          description: "Not the image owner",
+          category: "Creative",
+          prompt: "Be a helpful and honest AI assistant",
+          image,
+        },
+      })
+    ).status,
+    403,
+  );
+});
+async function registerTestUser(prefix) {
+  const r = await request("/auth/register", {
+    method: "POST",
+    body: { name: "QC customer", email: prefix + "@qc.benai", password: pass },
+  });
+  assert.equal(r.status, 200);
+  return { cookie: r.cookie, csrf: r.data.csrf, user: r.data.user };
+}
+test("avatar inventory caps hold under simultaneous create requests", async () => {
+  const user = await registerTestUser("inventory");
+  const results = await Promise.all(
+    Array.from({ length: 6 }, (_, i) =>
+      request("/avatars", {
+        method: "POST",
+        session: user,
+        body: {
+          name: "Character " + i,
+          description: "Concurrency quota validation",
+          category: "Creative",
+          prompt: "You are a concise and helpful AI guide",
+          image: "/avatars/nova.svg",
+        },
+      }),
+    ),
+  );
+  assert.equal(results.filter((r) => r.status === 201).length, 3);
+  assert.equal(results.filter((r) => r.status === 402).length, 3);
+});
+test("corrupt image bytes are rejected before becoming stored media", async () => {
+  const body = new FormData();
+  body.append(
+    "image",
+    new Blob([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3])], {
+      type: "image/png",
+    }),
+    "broken.png",
+  );
+  const r = await fetch(base + "/api/uploads", {
+    method: "POST",
+    headers: { Cookie: bob.cookie, "X-CSRF-Token": bob.csrf },
+    body,
+  });
+  assert.equal(r.status, 400);
 });

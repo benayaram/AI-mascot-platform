@@ -1,116 +1,105 @@
-# BENAI Studio
+# BENAI V2 — realistic, self-hosted AI avatars
 
-An original full-stack platform for animated AI characters, inspired by the capabilities of Mascotbot. Includes a real backend, customer accounts, an admin workspace, free/paid plan entitlements, local AI, voice conversations, video export, customer API keys, and embeddable assistants.
+**Release:** `2.0.0-beta.1` · **Branch:** `feat/benai-v2-realistic-self-hosted`
 
-![BENAI dashboard](docs/dashboard.png)
+BENAI is a working full-stack avatar platform with customer accounts, an admin console, plans, usage limits, realistic and illustrated characters, live voice, neural video exports, widgets, and APIs. V2 removes the OpenAI/HeyGen API integrations: all AI inference uses your own local open-weight models.
 
-## Run it without paid AI subscriptions
+![Realistic BENAI studio](docs/v2-studio.png)
 
-Requirements: **Node.js 24+, Python 3.12, FFmpeg, curl, unzip**, Linux x86-64, approximately 5 GB of disk for models/runtime, and at least 8 GB available RAM. This environment was tested with a CPU; a GPU is not required for the included chat and speech models.
+## What is live, and what is queued?
+
+**Live conversation:** microphone → local Whisper → streaming Qwen 1.5B → local Piper → browser playback and MediaPipe face animation. The authenticated WebSocket streams text and provides cancellable turns, quota checks, persistent history, and real measured timings.
+
+**Realistic neural video:** local MuseTalk 1.5 generates a talking-head MP4 from your portrait and local speech. On this CPU machine, a short clip took roughly a minute to render. It is a queued export, not realtime neural streaming. The live face animation and the neural video renderer are separate capabilities; the interface identifies both.
+
+**Realistic avatars:** three original synthetic portrait presets, local diffusion portrait generation, consent-confirmed custom uploads, a private media library, and shared face rigging in the app and SDK. Uploaded photographs do not require an external avatar-provider account.
+
+The release verdict is **GO for a supervised CPU pilot; NO-GO for an unattended public commercial launch or realtime neural video streaming on this hardware**. See the evidence and remaining launch gates in [QC-VERDICT.md](docs/QC-VERDICT.md).
+
+## Run without paid AI subscriptions
+
+The full stack was validated on this Linux x86-64 machine with 5 CPU threads and about 32 GiB RAM. Plan for 16+ GB RAM and 20+ GB persistent disk for all workers, then benchmark your own hardware. Chat/voice alone require less memory. No GPU or paid AI provider key is needed for the tested CPU workflow.
+
+Requirements: **Node 24+, Python 3.12, FFmpeg, curl, unzip**.
 
 ```bash
 npm ci
-cp .env.example .env
+cp .env.example .env          # first setup only; preserve existing local settings
 npm run setup:local
 ```
 
-`setup:local` downloads pinned, checksum-verified official artifacts for Qwen2.5-0.5B-Instruct, Piper LJSpeech, Whisper tiny.en, and Segmind Tiny-SD. Runtime files are outside the checkout at `/workspace/benai-runtime`. For a different machine, set `BENAI_RUNTIME_DIR=/your/absolute/path` for both setup and startup.
+This installs pinned, publisher-checksum-verified weights and prepares local browser model assets. Runtime files stay outside the checkout at `/workspace/benai-runtime`. Set `BENAI_RUNTIME_DIR=/your/absolute/path` for setup and startup on another computer.
 
-In one terminal:
+Start workers in one terminal:
 
 ```bash
 npm run services:local
 ```
 
-In another:
+Then start the app in another:
 
 ```bash
 npm run build
 npm start
 ```
 
-Open the app on port 3001. For frontend development, use `npm run dev` and Vite on port 5173. Set `APP_URL` to the origin you actually use, including the port. `LOCAL_AI_URL=http://127.0.0.1:8081/v1` and `LOCAL_SPEECH_URL=http://127.0.0.1:8082` connect the free local services. `LOCAL_IMAGE_URL=http://127.0.0.1:8083` connects the included diffusion image server. Set `BENAI_SKIP_IMAGES=1` for setup/startup to omit that larger component. Set `DEMO_MODE=false` for genuine AI replies; `true` explicitly permits labeled sample responses only when no AI provider is configured.
+The app runs on port 3001. Development: `npm run dev` serves Vite on port 5173 and proxies HTTP/WebSocket traffic to the backend. Set `APP_URL` to the origin you use. Use HTTPS in production and for microphone access outside localhost. Keep all model ports bound to loopback.
 
-No model API key is needed for the default local workflow. Hosting still uses compute and storage; this is not a promise of unlimited free production hosting.
+Optional low-resource mode: `BENAI_SKIP_NEURAL=1` skips starting the neural video worker; clear `LOCAL_PORTRAIT_URL` so the app reports that capability unavailable. This still needs the files downloaded by the full setup. `BENAI_SKIP_IMAGES=1` skips installing/starting image and portrait inference; clear `LOCAL_IMAGE_URL` and `LOCAL_PORTRAIT_URL` too. Existing portraits and browser rigs still work, but those modes do not provide neural generation. Default setup/startup prepares the complete tested stack.
 
-## Your administrator account
+## Models and ports
 
-Register your own account through the website, then run:
+| Role                      | Model                                                | Service |
+| ------------------------- | ---------------------------------------------------- | ------- |
+| Streaming chat            | Qwen2.5-1.5B-Instruct Q4_K_M, llama.cpp              | 8081    |
+| Speech recognition        | Whisper tiny.en, faster-whisper int8                 | 8082    |
+| Speech synthesis          | Piper LJSpeech + public-domain Bryce male voice      | 8082    |
+| Portrait generation       | Segmind Tiny-SD, CPU diffusion                       | 8083    |
+| Neural talking-head video | MuseTalk 1.5 + Whisper encoder + SD VAE              | 8084    |
+| Browser face rig          | MediaPipe Face Landmarker, locally served WASM/model | App/SDK |
+
+Two actual speakers are provided; the remaining voice choices adjust speaking speed. English recognition is currently supported. Neural CPU clips are limited to six seconds and 12 fps; illustrations can export longer clips. `/api/models` reports actual service readiness, while `/api/health` reports application/database startup. Neither is a public-hosting claim.
+
+Check [model attribution and licensing](docs/MODELS.md). No reference-site portraits, proprietary models, or non-commercial Ryan voice are bundled. All three portrait presets are synthetic.
+
+## Your administrator
+
+Register your own account, then promote it on the server:
 
 ```bash
 npm run admin:create -- --email=your@email.com
 ```
 
-This promotes that account to administrator. It does not create a default password. Alternatively, set `ADMIN_EMAIL` and a secure `ADMIN_PASSWORD` of at least 12 characters before first startup to bootstrap a new administrator. Bootstrap never changes an existing account’s password or silently promotes an existing customer.
+No default admin password is committed. Alternatively, set `ADMIN_EMAIL` and a secure `ADMIN_PASSWORD` before first startup to bootstrap a new administrator. Existing customers are not silently promoted or given a new password.
 
-Administrators can publish shared avatars, edit personalities and appearance, grant customer plans without collecting payment, manage customer roles, and inspect audit records. Customers cannot access other customers’ private avatars, conversations, API keys, or videos.
+Admins manage customer plans/roles, publish avatars, edit personalities and appearance, and inspect audit records. Free/Creator/Business tiers have server-enforced quotas. Concurrent avatar creation cannot exceed the inventory cap. Private portrait downloads and cross-account reuse are restricted; valid public widgets expose only their selected avatar.
 
-![AI-generated BENAI avatar](docs/ai-avatar.png)
+## Cloud storage and customer payments
 
-## Included features
+SQLite and private local media work immediately. Optional **MongoDB Atlas** is the primary text database when `MONGODB_URI` is set; changing backends does not migrate existing accounts. Configure the Atlas access list and native TLS connectivity. Its adapter is tested against a real local replica set; your Atlas account has not been connected.
 
-| Capability              | Implementation                                                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Customer authentication | Email/password, scrypt hashes, hashed expiring sessions, secure production cookies, CSRF and origin checks, rate limits                     |
-| Avatar library          | Six original SVG characters; private/custom avatars; image upload; glasses, hair/suit colors, gestures, personality and voice controls      |
-| Avatar creation         | Free local Tiny-SD AI images; procedural illustration fallback; optional external diffusion or OpenAI image generation                      |
-| AI conversations        | Local Qwen through llama.cpp; persistent history; optional OpenAI-compatible paid chat                                                      |
-| Voice                   | Local Piper speech; local Whisper transcription; microphone messages and hands-free voice activity detection                                |
-| Animation               | Audio-level-driven 2D mouth animation and simple gestures; JavaScript SDK accepts audio or MediaStream input                                |
-| Video                   | Private downloadable MP4 with local voice and animated portrait; persisted jobs, recovery on restart; optional HeyGen adapter               |
-| Plans                   | Free, Creator, Business; monthly message, voice, image and video quotas; administrator grants; optional Stripe Checkout and customer portal |
-| Integrations            | Hashed/revocable server-side API keys; scoped/revocable iframe chat widgets with shared message/voice quotas                                |
-| Text storage            | SQLite default; native MongoDB/Atlas collections when `MONGODB_URI` is set                                                                  |
-| Video storage           | Private local files default; Cloudflare R2 when its environment variables are set; short-lived signed downloads                             |
+Optional **Cloudflare R2** stores private generated videos using `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. Authorized downloads use five-minute signed URLs. Its S3 behavior is tested locally; your R2 account has not been connected. Portrait uploads remain on your persistent application volume.
 
-The model is deliberately small so it runs on a CPU. Replace its GGUF and use the same OpenAI-compatible API for stronger open-weight models. Local voice recognition is English; the five voice styles adjust one included Piper voice’s speaking rate. Custom raster images are animated portraits; only the built-in SVG rigs have adjustable mouths. Video export runs at 12 fps. Live SDK animation follows `requestAnimationFrame` and the device refresh rate; **120 fps, phoneme-accurate visemes, and Mascotbot performance parity have not been established**.
+Optional **Stripe** collects customer subscriptions. It is not an AI-model dependency. Configure recurring prices, portal, and signature-verified webhooks before taking payments. Processing fees still apply. Without Stripe, administrators can grant plans directly. Never put credentials in source control, browser code, public widgets, or chat.
 
-## MongoDB Atlas
-
-Set `MONGODB_URI` securely to your Atlas connection string and optionally `MONGODB_DB=benai`. Atlas becomes the primary database; the app does not mirror into SQLite. TLS remains enabled through the native MongoDB driver. Allow the server’s IP in Atlas and allow the cluster’s required network destinations. Native MongoDB credentials must be real server environment values, not HTTP-proxy placeholders.
-
-SQLite and MongoDB are separate backends: changing `MONGODB_URI` does **not** migrate existing local accounts. Start with your chosen backend before onboarding customers, or perform a reviewed migration. Atlas credentials/connectivity have not been tested for your account. The native adapter is tested against a real local MongoDB replica set, including message transactions, persistent sessions, and concurrent quotas.
-
-## Cloudflare R2
-
-Create a **private** bucket and set `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`. Use the account’s HTTPS S3 endpoint. On completed local renders, BENAI uploads the MP4 using the S3 SDK and stores the object key in the selected database. Authorized users receive a signed download URL that expires after five minutes. Local video files are retained until you apply your own storage retention policy. User avatar uploads remain on the application volume; back up that volume too.
-
-Do not put credentials in chat, source control, browser code, or the public SDK. R2 credentials/signing require real server environment values, not proxy placeholders. Object storage API behavior is covered by a local S3 fixture; your R2 account still needs a connection test after configuration.
-
-## Customer subscriptions
-
-The free tier runs immediately. Admins can grant Creator/Business access without a payment provider. To charge customers, configure the optional Stripe values in `.env.example`, create recurring USD prices matching your intended pricing, and configure a webhook to `/api/billing/webhook` for `customer.subscription.created`, `updated`, and `deleted`. Enable the Stripe customer portal in the Stripe dashboard.
-
-Only signature-verified webhooks reconcile paid plans. Reconciliation reads the customer’s current subscription state so reordered cancellation events do not downgrade a newer subscription. No purchase is simulated when billing is absent. Stripe account setup, test checkout, and public webhook delivery need your account and deployment; they have not been performed here. Stripe has payment-processing fees even without a monthly platform subscription.
-
-## Optional image/video providers
-
-`LOCAL_IMAGE_URL` supports the AUTOMATIC1111 `/sdapi/v1/txt2img` API. You must run that service with your licensed model and suitable hardware. When the local image service is running, avatar creation uses real Tiny-SD diffusion. With no image provider configured, the illustration fallback is procedural, **not diffusion AI**. Set `AI_PROVIDER_KEY` (or `OPENAI_API_KEY`) to use OpenAI chat, speech, and image APIs instead. These incur provider charges. Optional remote realtime tokens are issued only for paid-tier users and expire quickly; client duration limits are advisory, so do not enable this paid endpoint for untrusted clients without a server-side spending policy.
-
-For remote HeyGen video, configure `HEYGEN_API_KEY`, `HEYGEN_VOICE_ID`, and the character’s provider avatar ID. Uploaded portraits are not automatically registered as HeyGen avatars. Local speech/video takes precedence when configured.
-
-## APIs and SDK
-
-See [API documentation](docs/API.md) and [SDK examples](docs/SDK.md). The API key is shown only on creation. Keep it on your customer’s server. Never expose a full account API key in a website widget.
-
-## Validation
+## Validation and documentation
 
 ```bash
-npm test                    # Authentication, ownership, quotas, keys, widgets, billing signatures/state
-npm run build               # Production frontend
-npm run test:e2e            # Start local AI/speech first; Chromium must be installed
-npm run test:cloud           # Local Mongo replica-set + S3 storage tests
-npm run test:models          # Real AI image generation; start local services first
+npm test                     # 18 backend/security/billing checks; model suites are explicitly opt-in
+npm run build
+npm run test:cloud            # real local Mongo replica set + S3 fixture
+npm run test:realtime         # start workers first; actual streaming/voice/cancellation checks
+npm run test:models           # actual local diffusion generation
+npm run test:neural           # actual MuseTalk export through the backend; allow several minutes
+npm run test:e2e              # start workers first; installed Chromium required
 ```
 
-Browser tests create isolated fixture accounts and verify actual local model replies, TTS/transcription, avatar editing, API requests, widgets, video rendering, and private downloads. Tests do not require paid services. Set `BENAI_TEST_AUDIO=/absolute/path/to/speech.wav` when running browser tests to also exercise hands-free microphone capture with a Chromium audio fixture. Test databases are isolated from your `.data` directory. Cloud tests download an official MongoDB test binary on first run and verify its published checksum.
+To exercise hands-free microphone capture in Chromium, set `BENAI_TEST_AUDIO=/absolute/path/to/speech-with-silence.wav`. Include a silence gap after the utterance so VAD can close the recording; otherwise the 25-second safety cutoff applies. Tests use isolated accounts/databases. Real model suites are not replaced by demo responses.
 
-## Deployment
+- [Release QC verdict and measurements](docs/QC-VERDICT.md)
+- [CPU startup plan and staffing priorities](docs/STARTUP-PLAN.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [REST/WebSocket APIs](docs/API.md)
+- [Shared realistic/illustrated avatar SDK](docs/SDK.md)
 
-See [deployment instructions](docs/DEPLOYMENT.md). Keep the model and speech servers bound to loopback. Use HTTPS for microphone access outside localhost and for production session cookies. Persist `.data`, your runtime/model directories, and your MongoDB database/R2 bucket as appropriate. Set `NODE_ENV=production`, `APP_URL=https://your-domain`, and `DEMO_MODE=false`. Set `TRUST_PROXY=1` only behind exactly one trusted reverse proxy.
-
-This repository supplies a working development product and deployment instructions. No domain or public hosting has been provisioned. Email verification, self-service password reset, production monitoring, enterprise SSO, distributed job processing, and hardware performance guarantees are not included. Administrator-assisted recovery can be added as a separate provider-backed workflow before a public launch requiring those capabilities.
-
-## Licensing
-
-BENAI code and original SVG characters: MIT. Included model licenses and speech software have their own terms; see [model attribution](docs/MODELS.md). Mascotbot trademarks, source code, and assets are not included.
+Public hosting, a domain, live payments, Atlas/R2 account verification, email-based recovery/verification, and multi-server operation still require activation or separate implementation. The code is ready for a supervised pilot under the stated conditions, not a claim of complete Mascotbot performance parity.

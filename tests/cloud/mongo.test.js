@@ -131,6 +131,25 @@ test("native Mongo storage: account persistence, sessions, atomic quotas, and me
       ),
     );
     assert.deepEqual(results.map((x) => x.status).sort(), [200, 402, 402]);
+    const concurrent = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        fetch("http://127.0.0.1:3138/api/avatars", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "Mongo avatar " + i,
+            description: "Atomic inventory test",
+            category: "Creative",
+            prompt: "Be a concise and helpful AI assistant",
+            image: "/avatars/nova.svg",
+          }),
+        }),
+      ),
+    );
+    assert.deepEqual(
+      concurrent.map((r) => r.status).sort(),
+      [201, 201, 201, 402, 402, 402],
+    );
     await client.close();
   } finally {
     if (child) await stop();

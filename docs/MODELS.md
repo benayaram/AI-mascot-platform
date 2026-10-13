@@ -1,21 +1,27 @@
-# Model and tool attribution
+# V2 model attribution and commercial-use screening
 
-Default chat: **Qwen2.5-0.5B-Instruct-GGUF**, published by Qwen; Apache-2.0. https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+| Component            | Included selection                     | Published terms/source                                                                                                                                                     |
+| -------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chat                 | Qwen2.5-1.5B-Instruct-GGUF             | Apache-2.0, [official Qwen repository](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF)                                                                             |
+| Chat runtime         | llama.cpp b6800                        | MIT, [upstream](https://github.com/ggml-org/llama.cpp)                                                                                                                     |
+| Recognition          | Whisper tiny.en through faster-whisper | MIT / published Apache-2.0 HF model metadata, [model](https://huggingface.co/Systran/faster-whisper-tiny.en)                                                               |
+| Voice                | Piper LJSpeech medium                  | LJSpeech corpus is public domain; [official voice files](https://huggingface.co/rhasspy/piper-voices)                                                                      |
+| Second voice         | Piper US Bryce medium                  | Publisher model card identifies public-domain data recorded by the speaker; [card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/bryce/medium/MODEL_CARD) |
+| Speech engine        | Piper                                  | GPL-3.0, separate local process; [upstream](https://github.com/OHF-Voice/piper1-gpl)                                                                                       |
+| Portrait images      | Segmind Tiny-SD                        | CreativeML Open RAIL-M; [model card](https://huggingface.co/segmind/tiny-sd)                                                                                               |
+| Neural lips/video    | MuseTalk 1.5                           | MIT and publisher permission for commercial model use; [repository](https://github.com/TMElyralab/MuseTalk), [model license](licenses/MuseTalk.txt)                        |
+| Video VAE            | stabilityai/sd-vae-ft-mse              | MIT in published model metadata and MuseTalk dependency license; [model](https://huggingface.co/stabilityai/sd-vae-ft-mse)                                                 |
+| Video audio features | openai/whisper-tiny encoder            | Open weights, locally loaded safetensors; [model](https://huggingface.co/openai/whisper-tiny)                                                                              |
+| Face detection/rig   | Google MediaPipe Face Landmarker       | Apache-2.0 project/tasks; [documentation](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)                                                           |
 
-Inference runtime: **llama.cpp**, MIT; official release b6800. https://github.com/ggml-org/llama.cpp
+The OpenAI name in the Whisper publisher/model path does **not** mean an OpenAI API is called. V2 does not implement OpenAI or HeyGen API inference. MuseTalk preprocessing uses our MediaPipe crop, not the upstream DWpose/S3FD/face-parsing packages; those omitted detectors/weights are not downloaded. Model terms must still be followed when redistributing a deployment; this document records the selections and sources rather than offering legal advice.
 
-Default voice: **Piper en_US-ljspeech-medium**, based on LJSpeech. Voice files and their configurations are pinned from the official Piper voice repository. The original LJSpeech corpus is public domain; review the selected voice model’s card when redistributing weights. https://huggingface.co/rhasspy/piper-voices
+The Piper Ryan voice was considered and excluded: its dataset model card says **CC BY-NC-SA 4.0**. Wav2Lip's research/non-commercial weights were not selected. Non-commercial example videos or portrait photos from the reference products are not used. BENAI's three realistic presets were generated locally and represent fictional people.
 
-Speech engine: **Piper**, GPL-3.0. BENAI runs it as a separate local service; comply with Piper’s license when redistributing the program. https://github.com/OHF-Voice/piper1-gpl
+## Integrity and serialization
 
-Transcription: **Whisper tiny.en** via faster-whisper, MIT. https://huggingface.co/Systran/faster-whisper-tiny.en and https://github.com/SYSTRAN/faster-whisper
+`scripts/models-manifest.json`, `image-manifest.json`, `v2-models-manifest.json` and `browser-model-manifest.json` pin artifact locations and checksums. Large HF weights were checked against publisher LFS SHA-256 metadata; small config files against Git blob hashes. The MediaPipe task file was verified against the official Google object MD5 header, then pinned with SHA-256. The runtime archive was checked against the official GitHub release digest.
 
-FFmpeg licensing depends on your installed build and enabled codecs. The system FFmpeg used for video rendering is not bundled into the repository.
+MuseTalk and Tiny-SD tensor checkpoints are converted using explicit `torch.load(..., weights_only=True)` after upstream checksum verification. Running inference uses safetensors. Do not use unrestricted pickle loading, disable TLS checks, or replace expected hashes to get an installation to pass.
 
-`scripts/models-manifest.json` records pinned URLs and SHA-256 checksums. Weight hashes were verified against model publisher LFS metadata; small configuration files were verified against publisher Git blob IDs; the runtime archive was verified against the official GitHub release asset digest. Do not disable TLS or checksum verification to fix a download failure.
-
-Models and runtimes are downloaded into your environment, not committed to GitHub. Original BENAI character illustrations are distributed with the repository under its MIT license. No reference-site assets are used.
-
-Avatar images: **Segmind Tiny-SD**, CreativeML Open RAIL-M; distilled from Realistic Vision V4.0. Review its model license and use restrictions. https://huggingface.co/segmind/tiny-sd
-
-Image model checkpoints are publisher-checksum-verified, then converted locally using PyTorch `weights_only=True` and saved as safetensors. The running image service requires safetensors; unrestricted pickle loading is not used.
+The models are installed outside Git. Preserve the third-party model/software notices when redistributing runtime files, including Piper's GPL obligations. FFmpeg licensing depends on the installed build. BENAI original application code/illustrations are MIT.

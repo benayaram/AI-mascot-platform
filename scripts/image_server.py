@@ -23,7 +23,7 @@ class Handler(BaseHTTPRequestHandler):
    acquired=lock.acquire(blocking=False)
    if not acquired:status=429;data={'error':'Image generator is busy'}
    else:
-    result=pipeline(prompt='A friendly original avatar portrait, polished character illustration, centered face, soft clean background. '+prompt,negative_prompt='blurry, deformed, low quality, text, watermark',num_inference_steps=15,guidance_scale=7,width=384,height=384)
+    prefix=('Professional photographic head and shoulders portrait of an entirely fictional adult, face centered, looking straight at camera, natural skin texture, neutral expression, studio lighting, plain background. ' if request.get('style')=='realistic' else 'A friendly original avatar portrait, polished character illustration, centered face, soft clean background. ');result=pipeline(prompt=prefix+prompt,negative_prompt='blurry, deformed, low quality, text, watermark',num_inference_steps=15,guidance_scale=7,width=384,height=384)
     output=io.BytesIO();result.images[0].save(output,format='PNG');data={'images':[base64.b64encode(output.getvalue()).decode()],'model':'segmind/tiny-sd'}
   except Exception as e:
    print('Image generation failed:',type(e).__name__,flush=True);status=400;data={'error':'Image generation failed. Check the prompt and local model.'}

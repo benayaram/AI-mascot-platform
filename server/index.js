@@ -12,18 +12,18 @@ try {
 } catch (e) {
   if (e.code !== "ENOENT") throw e;
 }
-const { store, dataDir, passwordHash, plans, reserve, userUsage, audit } =
-  await import("./db.js");
 const {
-  aiJSON,
-  aiKey,
-  stripe,
-  demo,
-  providers,
-  reply,
-  unavailable,
-  providerFetch,
-} = await import("./providers.js");
+  store,
+  dataDir,
+  passwordHash,
+  plans,
+  reserve,
+  reserveInventory,
+  userUsage,
+  audit,
+} = await import("./db.js");
+const { stripe, demo, providers, reply, unavailable, providerFetch } =
+  await import("./providers.js");
 const {
   speech,
   renderLocalVideo,
@@ -34,6 +34,7 @@ const {
   illustration,
 } = await import("./media.js");
 const { reconcileSubscription } = await import("./billing.js");
+const { attachRealtime } = await import("./realtime.js");
 const { repo } = await import("./repository.js");
 const { default: express } = await import("express");
 const { default: helmet } = await import("helmet");
@@ -81,11 +82,11 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "blob:"],
         mediaSrc: ["'self'", "blob:", "https:"],
-        connectSrc: ["'self'", "https://api.openai.com"],
+        connectSrc: ["'self'"],
         frameAncestors: ["'self'"],
       },
     },
@@ -214,6 +215,42 @@ app.get("/api/health", async (req, res) =>
   res.json({ status: "ok", storage: store.engine, providers: providers() }),
 );
 app.use("/api/v1", auth, apiAccess);
+app.get("/api/models", auth, async (req, res) => {
+  const configured = [
+    ["chat", process.env.LOCAL_AI_URL?.replace(/\/v1$/, "")],
+    ["speech", process.env.LOCAL_SPEECH_URL],
+    ["images", process.env.LOCAL_IMAGE_URL],
+    ["portraits", process.env.LOCAL_PORTRAIT_URL],
+  ];
+  const models = await Promise.all(
+    configured.map(async ([name, url]) => {
+      if (!url) return { name, status: "not_configured" };
+      try {
+        const r = await fetch(url + "/health", {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok) throw Error();
+        const health = await r.json();
+        return {
+          name,
+          status: "ready",
+          model: health.model || name,
+          device: health.device || "cpu",
+          max_seconds: health.max_seconds,
+        };
+      } catch {
+        return { name, status: "offline" };
+      }
+    }),
+  );
+  res.json({
+    release: "2.0.0-beta.1",
+    models,
+    voice_transport: "self-hosted-websocket",
+    live_visual: "local-face-mesh",
+    neural_video: "queued",
+  });
+});
 app.get("/api/plans", async (req, res) => res.json({ plans }));
 app.post("/api/auth/register", loginLimiter, async (req, res) => {
   const v = parse(
@@ -284,6 +321,8 @@ const appearanceSchema = z.object({
     .default("#9d77e8"),
 });
 const avatarSchema = z.object({
+  kind: z.enum(["illustrated", "realistic"]).default("illustrated"),
+  rights_confirmed: z.boolean().default(false),
   appearance: appearanceSchema.optional(),
   name: z.string().trim().min(2).max(60),
   description: z.string().trim().min(3).max(300),
@@ -298,16 +337,34 @@ const avatarSchema = z.object({
   voice: z.enum(["coral", "alloy", "ash", "sage", "verse"]).default("coral"),
   image: z
     .string()
-    .regex(/^\/(avatars\/[a-z]+\.svg|uploads\/[a-f0-9-]+\.(png|jpg|webp))$/),
+    .regex(
+      /^\/(avatars\/[a-z]+\.svg|realistic\/[a-z-]+\.png|uploads\/[a-f0-9-]+\.(png|jpg|webp))$/,
+    ),
   color: z
     .string()
     .regex(/^#[0-9a-f]{6}$/i)
     .default("#e7ddfc"),
   public: z.boolean().default(false),
-  provider_avatar_id: z.string().max(200).optional(),
 });
+async function assertImageAccess(user, image) {
+  if (!image.startsWith("/uploads/")) return;
+  const asset = await store.one("assets", { id: image.split("/").pop() });
+  const references = await store.find("avatars", { image });
+  if (
+    user.role === "admin" ||
+    asset?.owner_id === user.id ||
+    references.some((a) => a.public || a.owner_id === user.id)
+  )
+    return;
+  fail(403, "This portrait belongs to a different account");
+}
 async function createAvatar(req, res) {
   const v = parse(avatarSchema, req.body);
+  if (v.kind === "realistic" && !v.rights_confirmed)
+    fail(
+      400,
+      "Confirm permission to use the portrait before creating a realistic avatar",
+    );
   if (v.public && req.user.role !== "admin")
     fail(403, "Only administrators can publish shared avatars");
   const count = (await repo.avatarCount(req.user.id)).n;
@@ -321,19 +378,36 @@ async function createAvatar(req, res) {
     )
   )
     fail(400, "Avatar image does not exist");
+  await assertImageAccess(req.user, v.image);
+  const undoInventory = await reserveInventory(
+    req.user,
+    "avatars",
+    plans[req.user.plan].avatars,
+    count,
+  );
   const id = randomUUID();
-  await repo.createAvatar(
-    id,
-    req.user.id,
-    v.name,
-    v.description,
-    v.category,
-    v.image,
-    v.color,
-    v.prompt,
-    v.voice,
-    Number(v.public),
-    v.provider_avatar_id || null,
+  try {
+    await repo.createAvatar(
+      id,
+      req.user.id,
+      v.name,
+      v.description,
+      v.category,
+      v.image,
+      v.color,
+      v.prompt,
+      v.voice,
+      Number(v.public),
+      null,
+    );
+  } catch (e) {
+    await undoInventory();
+    throw e;
+  }
+  await store.update(
+    "avatars",
+    { id },
+    { kind: v.kind, rights_confirmed: v.rights_confirmed },
   );
   if (v.appearance)
     await store.update("avatars", { id }, { appearance: v.appearance });
@@ -348,7 +422,14 @@ app.delete("/api/avatars/:id", auth, async (req, res) => {
   if ((await repo.avatarConversation(a.id)) || (await repo.avatarVideo(a.id)))
     fail(409, "This avatar has conversations or videos; it cannot be deleted");
   await repo.deleteAvatarEmbeds(a.id);
+  await store.ensureInventory(
+    req.user.id,
+    "avatars",
+    (await repo.avatarCount(req.user.id)).n,
+  );
   await repo.deleteAvatar(a.id);
+  if (a.owner_id === req.user.id)
+    await store.refund(req.user.id, "inventory", "avatars", 1);
   await audit(req.user.id, "avatar.deleted", { id: a.id });
   res.json({ ok: true });
 });
@@ -357,8 +438,11 @@ app.patch("/api/avatars/:id", auth, async (req, res) => {
   if (a.owner_id !== req.user.id && req.user.role !== "admin")
     fail(403, "You do not own this avatar");
   const v = parse(avatarSchema, { ...a, public: !!a.public, ...req.body });
+  if (v.kind === "realistic" && !v.rights_confirmed)
+    fail(400, "Portrait permission must be confirmed");
   if (v.public && req.user.role !== "admin")
     fail(403, "Only administrators can publish shared avatars");
+  await assertImageAccess(req.user, v.image);
   await repo.updateAvatar(
     v.name,
     v.description,
@@ -366,13 +450,15 @@ app.patch("/api/avatars/:id", auth, async (req, res) => {
     v.prompt,
     v.voice,
     Number(v.public),
-    v.provider_avatar_id || null,
+    null,
     a.id,
   );
   await store.update(
     "avatars",
     { id: a.id },
     {
+      kind: v.kind,
+      rights_confirmed: v.rights_confirmed,
       image: v.image,
       color: v.color,
       ...(v.appearance ? { appearance: v.appearance } : {}),
@@ -399,76 +485,96 @@ app.post("/api/uploads", auth, upload.single("image"), async (req, res) => {
         ? "webp"
         : null;
   if (!ext) fail(400, "Only PNG, JPEG, and WebP images are accepted");
-  const filename = randomUUID() + "." + ext;
-  writeFileSync(join(dataDir, "uploads", filename), b, { flag: "wx" });
+  const filename = randomUUID() + ".png";
+  const sharp = (await import("sharp")).default;
+  let pixels;
+  try {
+    pixels = await sharp(b, { limitInputPixels: 32000000 })
+      .rotate()
+      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+  } catch {
+    fail(400, "The image is corrupt or exceeds 32 megapixels");
+  }
+  writeFileSync(join(dataDir, "uploads", filename), pixels, { flag: "wx" });
+  await store.insert("assets", {
+    id: filename,
+    owner_id: req.user.id,
+    kind: req.body.kind === "realistic" ? "realistic" : "illustrated",
+  });
   res.status(201).json({ image: "/uploads/" + filename });
 });
 app.post("/api/avatars/generate", auth, async (req, res) => {
-  const v = parse(z.object({ prompt: z.string().min(10).max(2000) }), req.body);
-  if (!aiKey && !process.env.LOCAL_IMAGE_URL) {
-    const refund = await reserve(req.user, "images");
-    try {
-      res.json({ image: await illustration(v.prompt), procedural: true });
-    } catch (e) {
-      await refund();
-      throw e;
-    }
-    return;
-  }
-  if (process.env.LOCAL_IMAGE_URL) {
-    const refund = await reserve(req.user, "images");
-    try {
-      const r = await providerFetch(
-        process.env.LOCAL_IMAGE_URL + "/sdapi/v1/txt2img",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: v.prompt,
-            width: 512,
-            height: 512,
-            steps: 20,
-          }),
-        },
-      );
-      const d = await r.json();
-      if (!d.images?.[0]) fail(502, "Image model did not return an image");
-      const filename = randomUUID() + ".png";
-      writeFileSync(
-        join(dataDir, "uploads", filename),
-        Buffer.from(d.images[0], "base64"),
-      );
-      res.json({ image: "/uploads/" + filename });
-    } catch (e) {
-      await refund();
-      throw e;
-    }
-    return;
-  }
+  const v = parse(
+    z.object({
+      prompt: z.string().min(10).max(2000),
+      style: z.enum(["illustration", "realistic"]).default("illustration"),
+    }),
+    req.body,
+  );
   const refund = await reserve(req.user, "images");
   try {
-    const result = await aiJSON("images/generations", {
-      model: process.env.AI_IMAGE_MODEL || "gpt-image-1",
-      prompt:
-        "Create an original friendly avatar portrait suitable for a customer-facing assistant. " +
-        v.prompt,
-      size: "1024x1024",
-      n: 1,
-    });
-    if (!result.data?.[0]?.b64_json)
-      fail(502, "Image provider did not return image data");
-    const filename = randomUUID() + ".png";
-    writeFileSync(
-      join(dataDir, "uploads", filename),
-      Buffer.from(result.data[0].b64_json, "base64"),
-      { flag: "wx" },
+    if (!process.env.LOCAL_IMAGE_URL) {
+      if (v.style === "realistic")
+        throw unavailable("Realistic portrait generation");
+      const image = await illustration(v.prompt);
+      await store.insert("assets", {
+        id: image.split("/").pop(),
+        owner_id: req.user.id,
+      });
+      res.json({ image, procedural: true });
+      return;
+    }
+    const r = await providerFetch(
+      process.env.LOCAL_IMAGE_URL + "/sdapi/v1/txt2img",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: v.prompt, style: v.style }),
+      },
     );
-    res.json({ image: "/uploads/" + filename });
+    const d = await r.json();
+    if (!d.images?.[0]) fail(502, "Image model did not return a portrait");
+    const filename = randomUUID() + ".png";
+    const pixels = Buffer.from(d.images[0], "base64");
+    await (
+      await import("sharp")
+    )
+      .default(pixels)
+      .png()
+      .toFile(join(dataDir, "uploads", filename));
+    await store.insert("assets", {
+      id: filename,
+      owner_id: req.user.id,
+      kind: v.style === "realistic" ? "realistic" : "illustrated",
+    });
+    res.json({
+      image: "/uploads/" + filename,
+      model: d.model,
+      synthetic: true,
+    });
   } catch (e) {
     await refund();
     throw e;
   }
 });
+app.get("/api/assets", auth, async (req, res) =>
+  res.json({
+    assets: (
+      await store.find(
+        "assets",
+        { owner_id: req.user.id },
+        { sort: { created_at: -1 }, limit: 30 },
+      )
+    ).map((a) => ({
+      id: a.id,
+      image: "/uploads/" + a.id,
+      kind: a.kind || "illustrated",
+      created_at: a.created_at,
+    })),
+  }),
+);
 app.get("/api/conversations", auth, async (req, res) =>
   res.json({ conversations: await repo.conversations(req.user.id) }),
 );
@@ -538,31 +644,14 @@ app.post(["/api/tts", "/api/v1/tts"], auth, async (req, res) => {
     }),
     req.body,
   );
-  if (!aiKey && !process.env.LOCAL_SPEECH_URL)
-    throw unavailable("Text-to-speech");
+  if (!process.env.LOCAL_SPEECH_URL) throw unavailable("Speech synthesis");
   const refund = await reserve(
     req.user,
     "voice",
     Math.max(1, Math.ceil(v.text.length / 900)),
   );
   try {
-    if (process.env.LOCAL_SPEECH_URL) {
-      res.type("audio/wav").send(await speech(v.text, v.voice));
-      return;
-    }
-    const r = await providerFetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${aiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        input: v.text,
-        voice: v.voice,
-      }),
-    });
-    res.type("audio/mpeg").send(Buffer.from(await r.arrayBuffer()));
+    res.type("audio/wav").send(await speech(v.text, v.voice));
   } catch (e) {
     await refund();
     throw e;
@@ -583,33 +672,6 @@ app.post("/api/transcribe", auth, upload.single("audio"), async (req, res) => {
       },
     );
     res.json(await r.json());
-  } catch (e) {
-    await refund();
-    throw e;
-  }
-});
-app.post("/api/realtime/session", auth, apiAccess, async (req, res) => {
-  const v = parse(z.object({ avatar_id: z.string() }), req.body);
-  const a = await avatarFor(req.user, v.avatar_id);
-  if (!aiKey) throw unavailable("Realtime voice");
-  const refund = await reserve(req.user, "voice");
-  try {
-    const result = await aiJSON("realtime/client_secrets", {
-      expires_after: { anchor: "created_at", seconds: 60 },
-      session: {
-        type: "realtime",
-        model: process.env.AI_REALTIME_MODEL || "gpt-realtime",
-        instructions: a.prompt,
-        audio: { output: { voice: "coral" } },
-        max_output_tokens: 600,
-      },
-    });
-    // OpenAI session tokens are bearer credentials; limit use to a short token issuance window.
-    res.set("Cache-Control", "no-store").json({
-      value: result.value,
-      expires_at: result.expires_at,
-      max_client_duration_seconds: 60,
-    });
   } catch (e) {
     await refund();
     throw e;
@@ -656,12 +718,31 @@ const embedLimit = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
 });
+app.get("/api/embed/:id/image", async (req, res) => {
+  const e = await repo.embed(req.params.id);
+  if (!e) fail(404, "Widget not found");
+  const user = await repo.user(e.user_id);
+  if (!plans[user.plan].api) fail(402, "Widget unavailable");
+  const avatar = await avatarFor(user, e.avatar_id);
+  res.sendFile(
+    avatar.image.startsWith("/uploads/")
+      ? join(dataDir, avatar.image.slice(1))
+      : resolve("public" + avatar.image),
+  );
+});
 app.get("/api/embed/:id", async (req, res) => {
   const e = await repo.embed(req.params.id);
   if (!e) fail(404, "Widget not found");
   const a = await avatarFor({ id: e.user_id }, e.avatar_id);
   res.json({
-    avatar: { name: a.name, image: a.image, description: a.description },
+    avatar: {
+      name: a.name,
+      image: a.image.startsWith("/uploads/")
+        ? "/api/embed/" + e.id + "/image"
+        : a.image,
+      kind: a.kind,
+      description: a.description,
+    },
     demo,
   });
 });
@@ -728,6 +809,8 @@ app.post(["/api/videos", "/api/v1/videos"], auth, async (req, res) => {
     req.body,
   );
   const a = await avatarFor(req.user, v.avatar_id);
+  if (a.kind === "realistic" && !process.env.LOCAL_PORTRAIT_URL)
+    throw unavailable("Neural portrait rendering");
   if (process.env.LOCAL_SPEECH_URL) {
     if (!claimRenderer())
       fail(429, "A video is currently rendering. Try again shortly.");
@@ -752,57 +835,7 @@ app.post(["/api/videos", "/api/v1/videos"], auth, async (req, res) => {
     }
     return;
   }
-  if (!process.env.HEYGEN_API_KEY) throw unavailable("Avatar video");
-  if (!process.env.HEYGEN_VOICE_ID)
-    fail(503, "Set HEYGEN_VOICE_ID to use remote video");
-  if (!a.provider_avatar_id)
-    fail(
-      400,
-      "This avatar needs a HeyGen avatar ID. An administrator can set it in the avatar editor.",
-    );
-  const refund = await reserve(req.user, "videos");
-  try {
-    const r = await providerFetch("https://api.heygen.com/v2/video/generate", {
-      method: "POST",
-      headers: {
-        "X-Api-Key": process.env.HEYGEN_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        video_inputs: [
-          {
-            character: {
-              type: "avatar",
-              avatar_id: a.provider_avatar_id,
-              avatar_style: "normal",
-            },
-            voice: {
-              type: "text",
-              input_text: v.script,
-              voice_id: process.env.HEYGEN_VOICE_ID,
-            },
-          },
-        ],
-        dimension: { width: 1280, height: 720 },
-      }),
-    });
-    const result = await r.json();
-    if (!result.data?.video_id)
-      fail(502, "Video provider did not create a job");
-    const id = randomUUID();
-    await repo.createVideo(
-      id,
-      req.user.id,
-      a.id,
-      v.script,
-      "processing",
-      result.data.video_id,
-    );
-    res.status(202).json({ id, status: "processing" });
-  } catch (e) {
-    await refund();
-    throw e;
-  }
+  throw unavailable("Local video rendering");
 });
 app.get("/api/videos/:id/download", auth, async (req, res) => {
   const v = await repo.video(req.params.id, req.user.id);
@@ -812,29 +845,6 @@ app.get("/api/videos/:id/download", auth, async (req, res) => {
 app.get("/api/videos/:id", auth, async (req, res) => {
   const v = await repo.video(req.params.id, req.user.id);
   if (!v) fail(404, "Video not found");
-  if (v.status === "processing" && v.provider_id !== "local") {
-    if (!process.env.HEYGEN_API_KEY) throw unavailable("Avatar video");
-    const r = await providerFetch(
-      "https://api.heygen.com/v1/video_status.get?video_id=" +
-        encodeURIComponent(v.provider_id),
-      { headers: { "X-Api-Key": process.env.HEYGEN_API_KEY } },
-    );
-    const d = (await r.json()).data;
-    if (d?.status === "completed") {
-      if (!d.video_url?.startsWith("https://")) fail(502, "Invalid video URL");
-      await repo.videoComplete("completed", d.video_url, v.id);
-      v.status = "completed";
-      v.url = d.video_url;
-    } else if (d?.status === "failed") {
-      await repo.videoFailed(
-        "failed",
-        "The provider could not render this video.",
-        v.id,
-      );
-      v.status = "failed";
-      v.error = "The provider could not render this video.";
-    }
-  }
   res.json({ video: v });
 });
 app.post("/api/billing/checkout", auth, async (req, res) => {
@@ -910,6 +920,33 @@ app.patch("/api/admin/users/:id", auth, admin, async (req, res) => {
   await audit(req.user.id, "user.updated", { user_id: u.id, ...v });
   res.json({ ok: true });
 });
+app.use("/uploads/:filename", async (req, res, next) => {
+  const filename = req.params.filename;
+  if (!/^[a-f0-9-]+\.(png|jpg|webp)$/.test(filename)) {
+    res.status(404).end();
+    return;
+  }
+  const cookie = req.headers.cookie
+    ?.split(";")
+    .map((v) => v.trim())
+    .find((v) => v.startsWith("persona_session="))
+    ?.slice(16);
+  const session = cookie ? await repo.session(hash(cookie), Date.now()) : null;
+  const actor = session ? await repo.user(session.user_id) : null;
+  const asset = await store.one("assets", { id: filename }),
+    references = await store.find("avatars", { image: "/uploads/" + filename });
+  if (
+    actor?.role === "admin" ||
+    references.some((a) => a.public) ||
+    (session &&
+      (asset?.owner_id === session.user_id ||
+        references.some((a) => a.owner_id === session.user_id)))
+  ) {
+    next();
+    return;
+  }
+  res.status(404).end();
+});
 app.use(
   "/uploads",
   express.static(join(dataDir, "uploads"), {
@@ -922,7 +959,7 @@ app.get("/widget/:id", async (req, res) => {
   res.removeHeader("X-Frame-Options");
   res.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors *",
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self'; frame-ancestors *",
   );
   res.sendFile(resolve("public/widget.html"));
 });
@@ -977,7 +1014,10 @@ const server = app.listen(port, "0.0.0.0", () =>
     `BENAI listening on port ${port}; demo mode ${demo ? "enabled" : "disabled"}`,
   ),
 );
+const realtime = attachRealtime(server);
 function stop() {
+  for (const client of realtime.clients)
+    client.close(1001, "Server restarting");
   server.close(() => {
     store.close().then(() => process.exit(0));
   });

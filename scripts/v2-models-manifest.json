@@ -1,0 +1,64 @@
+{
+  "artifacts": [
+    {
+      "url": "https://huggingface.co/TMElyralab/MuseTalk/resolve/2bcb936e2fddb4d86db4c62fd45b387d0c061571/musetalkV15/musetalk.json",
+      "path": "models/musetalk/musetalk.json",
+      "sha256": null,
+      "blobId": "b822db87e503a283fbbee73617f89dcd294cb91c"
+    },
+    {
+      "url": "https://huggingface.co/TMElyralab/MuseTalk/resolve/2bcb936e2fddb4d86db4c62fd45b387d0c061571/musetalkV15/unet.pth",
+      "path": "models/musetalk/unet.pth",
+      "sha256": "7ebf6c98c181e20838e4c0054e96e944ac60d5d692cc01db42839fe11b787007",
+      "blobId": "ad33c410815bf12300e8cac58b10255df3e61d88"
+    },
+    {
+      "url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/config.json",
+      "path": "models/whisper-encoder/config.json",
+      "sha256": null,
+      "blobId": "417aa9de49a132dd3eb6a56d3be2718b15f08917"
+    },
+    {
+      "url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/preprocessor_config.json",
+      "path": "models/whisper-encoder/preprocessor_config.json",
+      "sha256": null,
+      "blobId": "c2048dfa9fd94a052e62e908d2c4dfb18534b4d2"
+    },
+    {
+      "url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/model.safetensors",
+      "path": "models/whisper-encoder/model.safetensors",
+      "sha256": "7ebd0e69e78190ffe1438491fa05cc1f5c1aa3a4c4db3bc1723adbb551ea2395",
+      "blobId": "fe42acd740b2c47cb34cf7b92426e3f82c1ce357"
+    },
+    {
+      "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/31f26fdeee1355a5c34592e401dd41e45d25a493/config.json",
+      "path": "models/portrait-vae/config.json",
+      "sha256": null,
+      "blobId": "0db26717579be63eb0ddbf15b43faa43700dfe5a"
+    },
+    {
+      "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/31f26fdeee1355a5c34592e401dd41e45d25a493/diffusion_pytorch_model.safetensors",
+      "path": "models/portrait-vae/diffusion_pytorch_model.safetensors",
+      "sha256": "a1d993488569e928462932c8c38a0760b874d166399b14414135bd9c42df5815",
+      "blobId": "90464d67ac7303d0ee4696334df13da130a948ea"
+    },
+    {
+      "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "path": "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "blobId": "eca68f83004d8b86fa1742ee507ddee8f4b2abce"
+    },
+    {
+      "url": "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/bryce/medium/en_US-bryce-medium.onnx",
+      "path": "models/piper/en_US-bryce-medium.onnx",
+      "sha256": "dc9caa6c313199ffb5ac698b6e542fa6cba388aeaf2731e25262e33b9810aef1",
+      "blobId": "d9a2429f330ea5bc5c39f596a57280ad7a1ac23e"
+    },
+    {
+      "url": "https://huggingface.co/rhasspy/piper-voices/resolve/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/bryce/medium/en_US-bryce-medium.onnx.json",
+      "path": "models/piper/en_US-bryce-medium.onnx.json",
+      "sha256": null,
+      "blobId": "2cbf22d4c9358974a8fba10bf6698194b8f0716b"
+    }
+  ]
+}

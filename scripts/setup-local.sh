@@ -5,6 +5,9 @@ BENAI_RUNTIME_DIR="${BENAI_RUNTIME_DIR:-/workspace/benai-runtime}"
 export BENAI_RUNTIME_DIR
 command -v ffmpeg >/dev/null || { echo 'Install FFmpeg before local video rendering.' >&2; exit 1; }
 python3 scripts/download-models.py
+python3 scripts/download-models.py v2-models-manifest.json
+python3 scripts/download-models.py browser-model-manifest.json
+node scripts/prepare-browser-assets.js
 mkdir -p "$BENAI_RUNTIME_DIR/llama"
 if [ ! -x "$BENAI_RUNTIME_DIR/llama/build/bin/llama-server" ]; then
   unzip -q "$BENAI_RUNTIME_DIR/llama.zip" -d "$BENAI_RUNTIME_DIR/llama"
@@ -17,5 +20,6 @@ if [ "${BENAI_SKIP_IMAGES:-0}" != 1 ]; then
   "$BENAI_RUNTIME_DIR/image-venv/bin/pip" install --cache-dir "$BENAI_RUNTIME_DIR/pip-cache" 'torch==2.9.1' --index-url https://download.pytorch.org/whl/cpu
   "$BENAI_RUNTIME_DIR/image-venv/bin/pip" install --cache-dir "$BENAI_RUNTIME_DIR/pip-cache" -r scripts/image-requirements.txt
   "$BENAI_RUNTIME_DIR/image-venv/bin/python" scripts/convert-image-weights.py
+  "$BENAI_RUNTIME_DIR/image-venv/bin/python" scripts/convert-portrait-weights.py
 fi
 printf 'Local AI and speech installed. Run npm run services:local in a separate terminal.\n'

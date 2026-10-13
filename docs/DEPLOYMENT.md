@@ -1,23 +1,24 @@
-# Deploying BENAI
+# Deploying the CPU pilot
 
-A single Linux x86-64 server with Node 24, Python 3.12, FFmpeg, curl, and unzip can run the included CPU workflow. Public hosting and a domain are not created by this repository. Use a persistent application volume. The small chat model is appropriate for development and modest usage; benchmark your expected concurrent workload before accepting paid customers.
+Use a persistent Linux x86-64 machine with Node 24, Python 3.12, FFmpeg, curl and unzip. The full stack was tested on roughly 32 GiB RAM / five CPU threads. A 16+ GB RAM / 20+ GB disk planning baseline must be benchmarked on your own host; it is not a tested minimum or a throughput guarantee. No hosting account/domain has been provisioned.
 
-1. Clone the repository and run `npm ci` and `npm run build`.
-2. Create `.env` using `.env.example`; enter real credentials only on the server or in its secret manager. Set the HTTPS `APP_URL`, `NODE_ENV=production`, `DEMO_MODE=false`, local service URLs, and your storage backend.
-3. Run `npm run setup:local` and keep the runtime/model directory on a persistent volume.
-4. Supervise `npm run services:local` and `npm start` using systemd, your host’s process supervisor, or your container platform. Restart both if the host restarts. Do not expose ports 8081, 8082, or 8083 publicly.
-5. Put a TLS reverse proxy in front of port 3001. Permit only your proxy to reach the application. If there is exactly one trusted proxy, set `TRUST_PROXY=1`; otherwise leave it unset and configure Express’s trusted proxy policy for your architecture before deployment.
-6. Register and promote your first administrator with the documented CLI. Review free-tier limits and publish appropriate privacy/terms documents for your actual business.
-7. If using Atlas, add the server IP to Atlas’s access list and confirm a native TLS database connection. If using R2, grant bucket-scoped credentials and check upload/signed download behavior. MongoDB and R2 connections cannot be verified without your accounts.
-8. If charging customers, configure real Stripe prices, portal, and webhook. Run a Stripe test-mode checkout and observe verified webhook synchronization before switching to live payment keys.
-9. Back up `.data`, including uploads and local videos, or your MongoDB/R2 data plus remaining local uploads. Rotating/deleting an R2 bucket breaks older video references. Configure retention intentionally; the app does not delete user media on a timer.
+1. Check out the V2 branch/tag. Install with `npm ci`, preserve/create `.env`, and run `npm run setup:local`. Downloads use pinned checksums and TLS.
+2. Run `npm run services:local` under a supervisor. Chat 8081, speech 8082, images 8083 and portrait video 8084 stay bound to loopback. If a supervised worker exits, the script stops the others; have your supervisor restart it.
+3. Run `npm run build` then `npm start` under the supervisor. Point an HTTPS reverse proxy at port 3001 and forward WebSocket upgrades for `/api/realtime`. Do not expose the model ports.
+4. Set `NODE_ENV=production`, `APP_URL=https://your-domain`, and `DEMO_MODE=false`. Set `TRUST_PROXY=1` only behind one explicitly trusted proxy. `.env` and credentials do not belong in Git or browser code.
+5. Register/promote the owner's account with the administrator CLI. Review customer plan limits and keep the initial pilot invitation-only.
+6. Persist/back up `.data` and model/runtime directories. If using MongoDB, use actual Atlas credentials/native TLS and verify the access list. Switching backends does not migrate accounts. If using R2, grant private bucket-scoped credentials and verify uploads and expiring downloads; avatar files still use the app volume.
+7. Only enable charging after Stripe test-mode checkout, customer portal, and real public signature-verified webhook delivery pass. AI model inference does not require Stripe or any paid AI keys.
+8. Run the full release checks on your chosen HTTPS origin: login, actual voice turn, microphone permission, cancellation, private media, widget, admin plan grant, video render/download and backup restore.
 
-## Readiness
+## Readiness and capacity
 
-`/api/health` proves the web process and selected database started. Provider flags indicate configured routes, not continuous health probes. Check `http://127.0.0.1:8081/health` and `http://127.0.0.1:8082/health` internally, then run `npm run test:e2e` against the included local services for functional readiness. For deployment, repeat a real authenticated chat, synthesis, microphone transcription, video render/download, admin plan grant, and widget interaction on the HTTPS origin.
+`/api/health` proves web/database startup. Authenticated `/api/models` probes configured worker health. A port/PID or a configured URL alone is not functional readiness. Run `npm run test:realtime` and `npm run test:neural` against the actual workers for inference checks.
 
-Microphone APIs need HTTPS outside localhost. The default voice mode records an utterance until a silence gap and then runs local transcription → chat → speech. While the assistant speaks, input is gated to prevent feedback. It is a turn-based local voice pipeline, not the reference provider’s proprietary full-duplex low-latency system. Use the SDK’s MediaStream route to render audio from your own realtime voice-agent service if needed.
+One chat slot, one video render per process, one voice socket per user, and a bounded speech wait queue constrain resource use. These are single-instance controls. The release tests do not establish a paid multi-tenant concurrency SLA. Measure invited pilot workloads before increasing customer quotas.
 
-## Scale and account lifecycle
+CPU neural video exports accept at most six seconds at 12 fps. Clips render much slower than playback. The live browser face rig plus streaming chat/Piper voice is the interactive alternative. The local voice pipeline is turn-based and gates input while the assistant speaks to reduce feedback; it is not full-duplex conversation with automatic barge-in. The stop button explicitly interrupts inference/playback.
 
-Local render concurrency and rate limits are per web process; SQLite uses one process and a persistent volume. For multiple application instances, use MongoDB, shared media storage, a distributed render queue, shared rate limits, and a provider concurrency controller. These distributed components are not included. Current sessions last seven days. There is no built-in mail provider, email verification, or self-service password reset. Do not promise those workflows to customers until implemented and connected to your mail provider.
+For multiple app instances, add a shared job queue, shared rate limits and shared private media. SQLite mode is intended for a single process. Native MongoDB storage is tested with transactions on a local replica set; your actual Atlas/R2 account still requires verification.
+
+Public commercial launch gates remain email verification/recovery, public terms/privacy, monitoring/alerting, deployed HTTPS and tested restore, plus payment/account connectivity if those services are selected. Current QC supports a supervised pilot under these constraints.

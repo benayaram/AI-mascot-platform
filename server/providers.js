@@ -1,16 +1,16 @@
 import Stripe from "stripe";
-export const aiKey = process.env.AI_PROVIDER_KEY || process.env.OPENAI_API_KEY;
 export const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 export const demo = process.env.DEMO_MODE === "true";
 export const providers = () => ({
-  ai: !!(process.env.LOCAL_AI_URL || aiKey),
-  tts: !!(process.env.LOCAL_SPEECH_URL || aiKey),
+  ai: !!process.env.LOCAL_AI_URL,
+  tts: !!process.env.LOCAL_SPEECH_URL,
   stt: !!process.env.LOCAL_SPEECH_URL,
   localVideo: !!process.env.LOCAL_SPEECH_URL,
-  images: !!(process.env.LOCAL_IMAGE_URL || aiKey),
-  video: !!process.env.HEYGEN_API_KEY,
+  images: !!process.env.LOCAL_IMAGE_URL,
+  video: !!process.env.LOCAL_PORTRAIT_URL,
+  neuralVideo: !!process.env.LOCAL_PORTRAIT_URL,
   billing: !!(
     stripe &&
     process.env.STRIPE_WEBHOOK_SECRET &&
@@ -18,86 +18,98 @@ export const providers = () => ({
     process.env.STRIPE_BUSINESS_PRICE_ID
   ),
   demo,
+  selfHosted: true,
 });
 export function unavailable(service) {
   const e = new Error(
-    `${service} is not configured. An administrator must connect this provider.`,
+    `${service} is offline. Start the corresponding self-hosted model service.`,
   );
   e.status = 503;
   return e;
 }
-export async function providerFetch(url, options) {
-  const r = await fetch(url, {
-    ...options,
-    signal: AbortSignal.timeout(90000),
-  });
+export async function providerFetch(url, options = {}) {
+  const { timeout = 90000, ...request } = options;
+  const signal = request.signal
+    ? AbortSignal.any([request.signal, AbortSignal.timeout(timeout)])
+    : AbortSignal.timeout(timeout);
+  const r = await fetch(url, { ...request, signal });
   if (!r.ok) {
+    const detail = r.status === 422 ? await r.json().catch(() => null) : null;
     const e = new Error(
-      `Provider request failed (${r.status}). Check the provider configuration and account balance.`,
+      detail?.error ||
+        `Self-hosted model request failed (${r.status}). Inspect the model service log.`,
     );
-    e.status = 502;
+    e.status = r.status === 429 ? 429 : 502;
     throw e;
   }
   return r;
 }
-export async function aiJSON(path, body) {
-  if (!aiKey) throw unavailable("AI");
-  return (
-    await providerFetch("https://api.openai.com/v1/" + path, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${aiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    })
-  ).json();
+function requestBody(avatar, messages, stream = false) {
+  let history = messages.slice(-12);
+  while (
+    history.length > 1 &&
+    history.reduce((n, m) => n + m.content.length, 0) > 6000
+  )
+    history.shift();
+  return {
+    model: "local",
+    messages: [
+      { role: "system", content: avatar.prompt.slice(0, 2500) },
+      ...history.map((m) => ({ ...m, content: m.content.slice(0, 5000) })),
+    ],
+    max_tokens: 180,
+    temperature: 0.6,
+    stream,
+  };
 }
 export async function reply(avatar, messages) {
-  if (process.env.LOCAL_AI_URL) {
-    let history = messages.slice(-12);
-    while (
-      history.length > 1 &&
-      history.reduce((n, m) => n + m.content.length, 0) > 6000
-    )
-      history.shift();
-    const r = await providerFetch(
-      process.env.LOCAL_AI_URL + "/chat/completions",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "local",
-          messages: [
-            { role: "system", content: avatar.prompt.slice(0, 2500) },
-            ...history.map((m) => ({
-              ...m,
-              content: m.content.slice(0, 5000),
-            })),
-          ],
-          max_tokens: 320,
-          temperature: 0.7,
-        }),
-      },
-    );
-    const data = await r.json();
-    return { content: data.choices[0].message.content, demo: false };
-  }
-  if (!aiKey) {
+  if (!process.env.LOCAL_AI_URL) {
     if (!demo) throw unavailable("AI conversation");
-    const text = messages.at(-1).content;
     return {
-      content: `Demo response from ${avatar.name}: I’d be happy to help with “${text.slice(0, 180)}”. In live mode, I can use my personality and your conversation history to give a complete answer. Connect an AI provider to start real conversations.`,
+      content: `Demo response from ${avatar.name}: I’d be happy to help with “${messages.at(-1).content.slice(0, 180)}”. Connect the local model for a real answer.`,
       demo: true,
     };
   }
-  const r = await aiJSON("chat/completions", {
-    model: process.env.AI_MODEL || "gpt-4o-mini",
-    messages: [
-      { role: "system", content: avatar.prompt },
-      ...messages.slice(-20),
-    ],
-    max_tokens: 600,
-  });
-  return { content: r.choices[0].message.content, demo: false };
+  const r = await providerFetch(
+    process.env.LOCAL_AI_URL + "/chat/completions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody(avatar, messages)),
+    },
+  );
+  const d = await r.json();
+  if (typeof d.choices?.[0]?.message?.content !== "string")
+    throw unavailable("AI response");
+  return { content: d.choices[0].message.content, demo: false };
+}
+export async function streamReply(avatar, messages, { signal, onToken }) {
+  if (!process.env.LOCAL_AI_URL) throw unavailable("Streaming conversation");
+  const r = await providerFetch(
+    process.env.LOCAL_AI_URL + "/chat/completions",
+    {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody(avatar, messages, true)),
+    },
+  );
+  const decoder = new TextDecoder();
+  let buffer = "",
+    content = "";
+  for await (const chunk of r.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let boundary;
+    while ((boundary = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + 1);
+      if (!line.startsWith("data:") || line === "data: [DONE]") continue;
+      const data = JSON.parse(line.slice(5));
+      const token = data.choices?.[0]?.delta?.content || "";
+      content += token;
+      if (token) onToken(token);
+    }
+  }
+  if (!content.trim()) throw unavailable("Streaming answer");
+  return content;
 }

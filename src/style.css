@@ -3446,3 +3446,75 @@ td select {
     scroll-behavior: auto !important;
   }
 }
+.realistic-avatar {
+  position: relative;
+  width: 260px;
+  flex-shrink: 0;
+  margin: 10px auto 24px;
+}
+.realistic-avatar canvas {
+  width: 100%;
+  border-radius: 18px;
+  display: block;
+  box-shadow: 0 12px 35px #66578022;
+}
+.realistic-avatar > small {
+  display: block;
+  margin-top: 9px;
+  font-size: 9px;
+  text-align: center;
+  color: #8c749f;
+}
+.portrait-disclosure {
+  position: absolute;
+  bottom: 35px;
+  left: 13px;
+  background: #fffdfbdc;
+  color: #806293;
+  font-size: 9px;
+  padding: 4px 8px;
+  border-radius: 20px;
+}
+.character-image img[src^="/realistic/"] {
+  object-position: center 28%;
+}
+.self-hosted-badge {
+  background: #e5f0e9;
+  color: #658775;
+  font-size: 9px;
+  border-radius: 20px;
+  padding: 6px 10px;
+}
+.rig-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rig-metrics span {
+  border-radius: 10px;
+  padding: 7px 10px;
+  background: #f2ecfa;
+  font-size: 10px;
+  color: #8a72a5;
+}
+.realistic-showcase {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+.realistic-showcase .character-image {
+  aspect-ratio: 1.1 !important;
+}
+.realistic-showcase .character-image img {
+  object-position: center 28%;
+}
+@media (max-width: 640px) {
+  .realistic-showcase {
+    grid-template-columns: 1fr !important;
+  }
+  .realistic-showcase .character-image {
+    aspect-ratio: 1.25 !important;
+  }
+  .realistic-avatar {
+    width: 235px;
+    max-width: 100%;
+  }
+}

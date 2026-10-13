@@ -58,7 +58,7 @@ export function run(command, args, { timeout = 120000 } = {}) {
     });
   });
 }
-export async function speech(text, voice = "coral") {
+export async function speech(text, voice = "coral", options = {}) {
   if (!process.env.LOCAL_SPEECH_URL) throw unavailable("Local speech");
   return Buffer.from(
     await (
@@ -66,6 +66,7 @@ export async function speech(text, voice = "coral") {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice }),
+        ...options,
       })
     ).arrayBuffer(),
   );
@@ -105,6 +106,55 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
       throw new Error(
         "This script is longer than 60 seconds. Shorten it and try again.",
       );
+    const target = join(dataDir, "videos", id + ".mp4");
+    if (avatar.kind === "realistic") {
+      if (!process.env.LOCAL_PORTRAIT_URL)
+        throw unavailable("Neural portrait rendering");
+      const sourceFile = avatar.image.startsWith("/uploads/")
+        ? join(dataDir, avatar.image.slice(1))
+        : resolve("public" + avatar.image);
+      const response = await providerFetch(
+        process.env.LOCAL_PORTRAIT_URL + "/render",
+        {
+          method: "POST",
+          timeout: 600000,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: readFileSync(sourceFile).toString("base64"),
+            audio: wav.toString("base64"),
+          }),
+        },
+      );
+      const rendered = await response.json();
+      writeFileSync(target, Buffer.from(rendered.video, "base64"));
+      let storage_key = null;
+      if (r2) {
+        storage_key = `videos/${user.id}/${id}.mp4`;
+        await r2.send(
+          new PutObjectCommand({
+            Bucket: process.env.R2_BUCKET,
+            Key: storage_key,
+            Body: readFileSync(target),
+            ContentType: "video/mp4",
+          }),
+        );
+      }
+      await store.update(
+        "videos",
+        { id },
+        {
+          status: "completed",
+          url: "/api/videos/" + id + "/download",
+          storage_key,
+          duration: rendered.duration,
+          model: rendered.model,
+          render_ms: rendered.render_ms,
+          fps: rendered.fps,
+          device: rendered.device,
+        },
+      );
+      return;
+    }
     const pcm = join(folder, "speech.pcm");
     await run("ffmpeg", [
       "-y",
@@ -165,8 +215,7 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
         .png()
         .toFile(join(folder, `frame-${String(frame).padStart(5, "0")}.png`));
     }
-    const filename = id + ".mp4",
-      target = join(dataDir, "videos", filename);
+    const filename = id + ".mp4";
     await run("ffmpeg", [
       "-y",
       "-v",
@@ -220,7 +269,9 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
       { id },
       {
         status: "failed",
-        error: e.message.startsWith("This script")
+        error: /^(This script|This (cpu|cuda) neural|Use a clear)/.test(
+          e.message,
+        )
           ? e.message
           : "Local video rendering failed. Check the speech and FFmpeg services.",
       },
