@@ -1,0 +1,47 @@
+{
+  "name": "benai-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"node --watch server/index.js\" \"vite --host 0.0.0.0\"",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "test:e2e": "playwright test",
+    "setup:local": "bash scripts/setup-local.sh",
+    "services:local": "bash scripts/start-local.sh",
+    "admin:create": "node scripts/create-admin.js",
+    "test:cloud": "node --test --test-concurrency=1 tests/cloud/*.test.js",
+    "format": "prettier --write src server tests public/*.js public/*.html public/*.css *.json *.js *.html docs/*.md README.md",
+    "format:check": "prettier --check src server tests public/*.js public/*.html public/*.css *.json *.js *.html docs/*.md README.md",
+    "test:models": "BENAI_TEST_MODELS=1 node --test tests/models.test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1150.0",
+    "@aws-sdk/s3-request-presigner": "^3.1150.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "lucide-react": "^0.468.0",
+    "mongodb": "^7.7.0",
+    "multer": "^2.0.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.9.0",
+    "sharp": "^0.35.5",
+    "stripe": "^19.0.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "mongodb-memory-server": "^11.3.0",
+    "prettier": "^3.9.10",
+    "vite": "^7.1.0"
+  }
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>BENAI Assistant</title>
+    <link rel="stylesheet" href="/widget.css" />
+  </head>
+  <body>
+    <header>
+      <div id="portrait"></div>
+      <h1 id="name">Your assistant</h1>
+      <p id="description">A little personality. A real conversation.</p>
+    </header>
+    <main id="messages" aria-live="polite"></main>
+    <form id="chat">
+      <input
+        id="message"
+        aria-label="Message"
+        placeholder="Say hello…"
+        maxlength="2000"
+        required
+      /><button id="send" type="submit">↗</button>
+    </form>
+    <footer>
+      Powered by <a href="/" target="_blank" rel="noopener">BENAI</a> · AI can
+      make mistakes.
+    </footer>
+    <script type="module" src="/widget.js"></script>
+  </body>
+</html>

@@ -1,0 +1,76 @@
+{
+  "artifacts": [
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/model_index.json",
+      "path": "models/tiny-sd/model_index.json",
+      "sha256": null,
+      "blobId": "2e4ef72e7255fde4b11688a97e10f32c63d7e4f1"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/scheduler/scheduler_config.json",
+      "path": "models/tiny-sd/scheduler/scheduler_config.json",
+      "sha256": null,
+      "blobId": "58c09c1f9552d43923bc5b091eab2c08f10cb0c2"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/text_encoder/config.json",
+      "path": "models/tiny-sd/text_encoder/config.json",
+      "sha256": null,
+      "blobId": "d7ebd88e52a8a3918c9482b0f208d84a03bf0f7c"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/text_encoder/pytorch_model.bin",
+      "path": "models/tiny-sd/text_encoder/pytorch_model.bin",
+      "sha256": "f99d8915149c782551f7d14aae5ca0b6e76a6e94d30e5dc86a349b228fbf92ad",
+      "blobId": "57b014dfed47280df60465a81c6ccd2f10e480ef"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/tokenizer/merges.txt",
+      "path": "models/tiny-sd/tokenizer/merges.txt",
+      "sha256": null,
+      "blobId": "76e821f1b6f0a9709293c3b6b51ed90980b3166b"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/tokenizer/special_tokens_map.json",
+      "path": "models/tiny-sd/tokenizer/special_tokens_map.json",
+      "sha256": null,
+      "blobId": "2c2130b544c0c5a72d5d00da071ba130a9800fb2"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/tokenizer/tokenizer_config.json",
+      "path": "models/tiny-sd/tokenizer/tokenizer_config.json",
+      "sha256": null,
+      "blobId": "2e8612a429492973fe60635b3f44a28b065cfac0"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/tokenizer/vocab.json",
+      "path": "models/tiny-sd/tokenizer/vocab.json",
+      "sha256": null,
+      "blobId": "469be27c5c010538f845f518c4f5e8574c78f7c8"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/unet/config.json",
+      "path": "models/tiny-sd/unet/config.json",
+      "sha256": null,
+      "blobId": "98ffc6c7143ac70bec9519a3d15f2fb2d432f959"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/unet/diffusion_pytorch_model.bin",
+      "path": "models/tiny-sd/unet/diffusion_pytorch_model.bin",
+      "sha256": "c9b63e57cb1479c946c73bf5484bc1a823dbe565158ea0ee40015a18844d9f29",
+      "blobId": "3deac003bfe5a4066ada84e278dce1b6b1a209c6"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/vae/config.json",
+      "path": "models/tiny-sd/vae/config.json",
+      "sha256": null,
+      "blobId": "44895ace6f42cff1b08a3e27de530348118c2ad9"
+    },
+    {
+      "url": "https://huggingface.co/segmind/tiny-sd/resolve/cad0bd7495fa6c4bcca01b19a723dc91627fe84f/vae/diffusion_pytorch_model.bin",
+      "path": "models/tiny-sd/vae/diffusion_pytorch_model.bin",
+      "sha256": "279228e5296858f5d330db506ff6a51fdcad0d69f87634b5e9133406110af9bf",
+      "blobId": "d1acef329e66d98eb6237119a10c3ad7546c13d2"
+    }
+  ]
+}

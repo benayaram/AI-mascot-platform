@@ -1,0 +1,32 @@
+export const plans = {
+  free: {
+    name: "Free",
+    price: 0,
+    messages: 100,
+    images: 2,
+    voice: 10,
+    videos: 1,
+    avatars: 3,
+    api: false,
+  },
+  pro: {
+    name: "Creator",
+    price: 29,
+    messages: 2000,
+    images: 40,
+    voice: 120,
+    videos: 10,
+    avatars: 20,
+    api: true,
+  },
+  business: {
+    name: "Business",
+    price: 99,
+    messages: 10000,
+    images: 150,
+    voice: 600,
+    videos: 50,
+    avatars: 100,
+    api: true,
+  },
+};
