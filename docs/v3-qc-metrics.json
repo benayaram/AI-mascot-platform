@@ -1,0 +1,57 @@
+{
+  "hardware": {
+    "cpu_threads": 5,
+    "ram_gib": 33,
+    "gpu": false
+  },
+  "fast": {
+    "created_at": "2026-10-13T20:30:34.586Z",
+    "avatar_id": "amara",
+    "status": "completed",
+    "provider_id": "local",
+    "compute": "cpu",
+    "quality": "fast",
+    "storage_key": null,
+    "duration": 1.39325,
+    "model": "BENAI-audio-driven-warp",
+    "render_ms": 673,
+    "fps": 24,
+    "device": "cpu",
+    "total_ms": 1056
+  },
+  "neural": {
+    "created_at": "2026-10-13T20:22:15.460Z",
+    "avatar_id": "amara",
+    "status": "completed",
+    "provider_id": "local",
+    "compute": "cpu",
+    "quality": "neural",
+    "storage_key": null,
+    "duration": 1.4396875,
+    "model": "MuseTalk-1.5",
+    "render_ms": 72930,
+    "fps": 12,
+    "device": "cpu",
+    "total_ms": 73393
+  },
+  "voice_turns": [
+    {
+      "first_token_ms": 410,
+      "audio_ready_ms": 941
+    },
+    {
+      "first_token_ms": 226,
+      "audio_ready_ms": 366
+    },
+    {
+      "first_token_ms": 422,
+      "audio_ready_ms": 1177
+    },
+    {
+      "transcription_ms": 502,
+      "first_token_ms": 924,
+      "audio_ready_ms": 4133
+    }
+  ],
+  "limit": "Short functional samples, not an SLA. Fast pixel animation and neural MuseTalk are different quality paths. GPU and customer provider accounts were not available."
+}

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -84,6 +84,26 @@ test("native Mongo storage: account persistence, sessions, atomic quotas, and me
       Cookie: cookie,
       "X-CSRF-Token": data.csrf,
     };
+    const customerKey = randomBytes(24).toString("hex");
+    r = await fetch("http://127.0.0.1:3138/api/provider-credentials/gemini", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        key: customerKey,
+        model: "gemini-3.8-flash-tts",
+        voice: "Kore",
+      }),
+    });
+    assert.equal(r.status, 200);
+    const vaultProbe = new MongoClient(uri);
+    await vaultProbe.connect();
+    const sealed = await vaultProbe
+      .db("benai_test")
+      .collection("provider_credentials")
+      .findOne({ user_id: data.user.id });
+    assert.ok(sealed.ciphertext);
+    assert.ok(!JSON.stringify(sealed).includes(customerKey));
+    await vaultProbe.close();
     r = await fetch("http://127.0.0.1:3138/api/chat", {
       method: "POST",
       headers,
@@ -109,6 +129,11 @@ test("native Mongo storage: account persistence, sessions, atomic quotas, and me
     data = await r.json();
     assert.equal(data.usage.messages, 1);
     assert.equal(data.user.email, "mongo@test.benai");
+    r = await fetch("http://127.0.0.1:3138/api/provider-settings", { headers });
+    const persisted = await r.json();
+    assert.equal(persisted.storage, "mongodb");
+    assert.equal(persisted.credentials[0].provider, "gemini");
+    assert.ok(!JSON.stringify(persisted).includes(customerKey));
     const client = new MongoClient(uri);
     await client.connect();
     await client
@@ -151,6 +176,54 @@ test("native Mongo storage: account persistence, sessions, atomic quotas, and me
       [201, 201, 201, 402, 402, 402],
     );
     await client.close();
+    await stop();
+    const backupDir = mkdtempSync(join(tmpdir(), "benai-mongo-backup-"));
+    try {
+      const environment = {
+        ...process.env,
+        MONGODB_URI: uri,
+        MONGODB_DB: "benai_test",
+        DATA_DIR: dir,
+        APP_URL: "http://127.0.0.1:3138",
+      };
+      let outcome = spawnSync(
+        process.execPath,
+        ["scripts/backup.js", "backup", backupDir],
+        { env: environment, encoding: "utf8" },
+      );
+      assert.equal(outcome.status, 0, outcome.stderr);
+      outcome = spawnSync(
+        process.execPath,
+        ["scripts/backup.js", "restore", backupDir, "--confirm-restore=BENAI"],
+        {
+          env: {
+            ...environment,
+            MONGODB_DB: "benai_restore",
+            DATA_DIR: join(dir, "restored"),
+          },
+          encoding: "utf8",
+        },
+      );
+      assert.equal(outcome.status, 0, outcome.stderr);
+      const restoredClient = new MongoClient(uri);
+      await restoredClient.connect();
+      assert.equal(
+        await restoredClient
+          .db("benai_restore")
+          .collection("users")
+          .countDocuments({ email: "mongo@test.benai" }),
+        1,
+      );
+      assert.ok(
+        await restoredClient
+          .db("benai_restore")
+          .collection("provider_credentials")
+          .findOne({ user_id: data.user.id }),
+      );
+      await restoredClient.close();
+    } finally {
+      rmSync(backupDir, { recursive: true, force: true });
+    }
   } finally {
     if (child) await stop();
     await repl.stop();

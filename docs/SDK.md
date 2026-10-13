@@ -1,4 +1,4 @@
-# BENAI V2 Avatar SDK
+# BENAI V3 Avatar SDK
 
 `/sdk.js` renders illustrated SVG rigs and realistic portraits. Realistic rendering shares `/portrait-rig.js` with the React studio, using the self-hosted MediaPipe face model and WASM under `/runtime`. It warps a local photo mesh from audio levels; it does not run MuseTalk in the browser or generate neural live frames.
 
@@ -30,3 +30,5 @@ For your own host, copy the module, portrait helper, permitted image, and prepar
 The iframe widget is the easiest hosted integration. Its revocable embed ID accesses only that avatar's chat/speech/image. Private portraits use the scoped embed image route, not an exposed account key. API keys belong on the customer's server. A user gesture may be needed for AudioContext playback. `connectStream()` plays the incoming stream, so do not route it to speakers twice.
 
 Live face animation is capped near 30 updates/second in this CPU-friendly renderer and is amplitude-driven. It does not provide 120 fps or phoneme-accurate visemes. Actual neural lips are provided by the server's queued MuseTalk exports, subject to measured CPU latency and crop/blending quality.
+
+Widget TTS uses the widget owner’s saved provider choice and quota through the backend. Provider secrets never appear in SDK/widget code.

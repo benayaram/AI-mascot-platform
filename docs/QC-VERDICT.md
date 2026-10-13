@@ -1,53 +1,53 @@
-# BENAI V2 release QC verdict
+# BENAI V3 QC verdict
 
-Release candidate: **2.0.0-beta.1** on **feat/benai-v2-realistic-self-hosted**.
+Release `3.0.0-beta.1` on `feat/benai-v3-low-latency-byok`.
 
-**GO: supervised, CPU-only pilot for live voice/portrait assistants, customer/admin workflows, widgets, APIs, and queued video exports.**
+**GO for an invited single-instance pilot using the verified CPU workflows.** The V2 latency issue is addressed through a separate fast animation renderer, and the launch workflows below are now implemented. This is automated testing and manual self-review, not independent certification or a guarantee of zero defects.
 
-**NO-GO: unattended public paid launch, realtime neural talking-head video streaming on CPU, or an assertion of Mascotbot performance parity.** Those claims exceed the evidence or need the launch prerequisites listed below. This is automated testing and manual self-review, not independent external certification.
+**Public paid activation is conditional on actual deployment/account checks.** No GPU, provider subscriptions, Atlas account, public domain or payment account was supplied here. Working adapters and local tests cannot certify those absent services. Do not market realtime neural CPU video or proprietary reference-site parity.
 
-## Executed evidence
+## Executed release checks
 
-| Suite                                     | Executed outcome | What it demonstrates                                                                                                                                                                                 |
-| ----------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend/auth/ownership/billing unit tests | 18 passed        | Password/session/CSRF/origin checks, customer isolation, private media/reuse restrictions, consent, quotas and concurrent avatar inventory, key revocation, widget revocation, signed billing events |
-| Native database/object-storage tests      | 2 passed         | Real local Mongo replica-set persistence/transactions/concurrent quotas and avatar caps; private S3-compatible video upload/signed download fixture                                                  |
-| Actual self-hosted realtime tests         | 5 passed         | Real token streaming and speech, audio recognition over our own socket, interruption/refund, origin/auth checks and revoked sessions                                                                 |
-| Browser product tests                     | 8 passed         | Registration, real conversation/speech/transcription, illustrated editing, admin plans/API/widget, private MP4 playback, hands-free capture, realistic portraits and private-photo SDK widget        |
-| Actual diffusion test                     | 1 passed         | Local weights produced an actual PNG through authenticated API; owner can retrieve it and usage is recorded                                                                                          |
-| Actual neural export test                 | 1 passed         | MuseTalk produced a persisted, playable, private H.264/AAC talking-head MP4 through the backend                                                                                                      |
+| Suite                                        | Distinct passing cases | Evidence                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend/auth/ownership/billing regression    | 18                     | Existing account/CSRF/ownership/quota/key/widget/Stripe signature workflows                                                                                                                                                                                                                                                 |
+| V3 provider/privacy/growth/backup acceptance | 15                     | Encrypted private keys, account-bound authentication, SSRF URL rejection, concurrent storage cap, three TTS request/response adapters, Gemini SSE socket chunks, failure refunds, verified GPU routing contract, HeyGen private MP4 contract, verification, templates/leads/referrals, restore integrity, recovery/deletion |
+| Launch identity and SMTP                     | 2                      | Verification gate and real SMTP protocol delivery to a local test inbox                                                                                                                                                                                                                                                     |
+| Native Mongo/S3 storage                      | 2                      | Actual replica-set persistence/restart/ciphertext/quotas and Mongo backup/restore; S3 private video/signing fixture                                                                                                                                                                                                         |
+| Browser product journeys                     | 12                     | Eight existing product journeys plus settings/mobile GPU explanation, real local fact-grounded demo→lead→referral, verification/recovery, operations status                                                                                                                                                                 |
+| Actual self-hosted model checks              | 8                      | Five real local WebSocket cases, diffusion PNG, neural MP4, fast animated MP4                                                                                                                                                                                                                                               |
 
-**35 distinct automated tests passed.** The standard `npm test` intentionally skips seven opt-in model cases; each of those seven was run separately against the real workers and passed. The build also completed. Model tests used no OpenAI/HeyGen API credentials or paid-provider responses.
+**57 distinct automated cases passed across these suites.** `npm test` runs 35 cases and intentionally skips eight opt-in model cases; those eight were separately executed against actual local workers. Production build, formatting, Python/JS compilation and shell syntax checks completed. No customer paid-provider credentials were used during validation. The production dependency audit reported zero known vulnerabilities; that is not a security certification.
 
-Manual checks: two distinct Piper speakers generated different playable audio; three simultaneous short synthesis requests returned HTTP 200 through the bounded queue; all four model health endpoints responded; the neural frame was visually inspected for mouth movement and crop/blend artifacts; model/license selections and Git exclusions were reviewed. Public cloud account connectivity and real payment processing were not replaced with passing local fixtures.
+Provider/GPU fixtures prove request formats, ciphertext/account isolation, streaming handling, job persistence/private downloads, failures and routing. They do **not** prove a real provider accepts a customer’s key/model, a real GPU’s throughput, cloud SMTP deliverability, Atlas/R2 connectivity or real Stripe charging. The SMTP adapter exercised the actual SMTP protocol locally; browser identity tests consumed actual locally delivered capture links.
 
-## Actual measurements and practical limits
+## Latency evidence
 
-Hardware: five CPU threads, about 33 GiB RAM, no NVIDIA GPU. The full stack used roughly 8.5 GiB at an observed steady point; this is not a measured peak-memory guarantee. Detailed samples are in [v2-qc-metrics.json](v2-qc-metrics.json).
+Hardware: CPU only, five threads and approximately 33 GiB RAM. Measurements are short functional samples, not load-test or latency guarantees. Detailed evidence is in [v3-qc-metrics.json](v3-qc-metrics.json).
 
-The final short-turn run included browser activity, so measurements should be read as small-sample functional timing, not an SLA. Three short typed turns and one short audio turn were recorded. First-token and audio-ready timing refer to backend delivery; microphone silence detection and browser buffering/playback add latency. Earlier idle samples were faster. Long answers and concurrent work can be slower.
+A roughly **1.4-second fast CPU portrait** rendered in about **0.65–0.70 seconds**, around **1.05 seconds end to end** in the recorded sample. The generated H.264/AAC MP4 was private and playable, with 24 fps output and changing decoded video frame hashes. The worker uses a real landmark detector and audio-driven image warping. This is lightweight animation, not neural lip synthesis or phoneme-accurate mouth movement.
 
-Neural CPU rendering generated approximately 1.3–1.4 seconds of video in about 64–80 seconds across the observed samples. Output is 12 fps, with a six-second clip cap. A 12 fps output file does not imply 12 fps inference throughput. The interface labels this as a queued CPU export. Longer clips have not been benchmarked in this release.
+The neural CPU path produced approximately **1.44 seconds in 72.93 seconds of rendering** in the V3 sample. CPU MuseTalk remains slow. The product defaults to fast animation and lets users explicitly choose neural quality. A GPU selector is unavailable until a reachable worker reports CUDA support; unsupported switching fails before video quota reservation. CUDA installation/worker scripts and device routing exist, but actual GPU inference, VRAM requirements and latency are unverified.
 
-Live portraits use a local MediaPipe landmark model and amplitude-driven textured face mesh, updated at approximately 30 Hz. This is a real local face rig but not neural-frame synthesis or phoneme-accurate visemes. MuseTalk produces actual neural lips for the queued export, with simple crop/blend compositing that can soften the lower face. Front-facing, clear, single-person portraits are the supported input; a poor crop or face pose may produce artifacts. Quality was manually inspected on a short synthetic example, not assessed by a human evaluation panel.
+Live local voice still uses turn-based Whisper → streamed Qwen → Piper → face mesh, with explicit interruption. Gemini 3.8 TTS supports progressive SSE audio playback after the text reply. This is not Gemini Live multimodal/full-duplex conversation. No automatic acoustic barge-in, voice cloning or 120 fps claim is made.
 
-## Defects fixed during V2 QC
+## V2 gaps closed in code
 
-- Removed external OpenAI/HeyGen inference and realtime-token routes; selected local models do not require provider keys.
-- Protected private portrait retrieval and cross-account image reuse; valid widgets have a revocable scoped image route.
-- Added atomic avatar inventory limits for SQLite and MongoDB.
-- Decode/normalize uploads and reject corrupt/oversized images before storing them.
-- Added authenticated, exact-origin, CSRF-checked realtime turns and per-turn session revalidation.
-- Cancel in-flight model requests and refund uncommitted/undelivered work when interrupted.
-- Added a bounded speech wait queue for overlapping short requests.
-- Prevented the chat's auto-scroll from moving the whole page; identified streaming/recognition/synthesis stages and displayed actual timings.
-- Required safetensors for inference after checksum verification and restricted tensor-only conversion.
-- Excluded the non-commercial Ryan voice and used the public-domain Bryce voice instead.
+- Added default fast CPU exports, explicit neural quality, CPU/GPU selection, per-job device routing and measured render metadata.
+- Added encrypted account-private provider credentials, safe summaries, selection/deletion, discovery and speech previews; Mongo ciphertext survives restart.
+- Connected provider TTS to studio, REST, widgets and local exports, and HeyGen generation to private job/download persistence.
+- Added SMTP verification/recovery, hashed expiring atomic tokens, verification gating and session/key revocation on reset.
+- Added customer data export/deletion, unused portrait removal, bounded concurrent portrait inventory and lead/demo revocation.
+- Added offline integrity-checked SQLite/Mongo backup restoration, readiness/monitor commands and admin operations status.
+- Added fact-grounded business templates, opt-in public demos, consented private leads, referral attribution and measurable usage counts.
+- Added privacy/terms notices and a budget-conscious customer acquisition plan.
 
-## Remaining launch gates and unverified claims
+During QC, fixed the fast encoder pipe stall, correct SQLite duplicate handling, streaming playback order, stale provider status, shared-IP read/mutation throttling, referral attribution after navigation, MIME decoding assertions, mobile/selector checks and backup manifest/preflight validation. All repaired flows were revalidated.
 
-Public HTTPS hosting/domain, production secret management, tested backup restoration, monitoring/alerts, user account verification/recovery and business privacy/terms need completion before unattended public operation. Optional real Atlas/R2 accounts and a Stripe test checkout/portal/public webhook must be connected and tested if selected. No keys were requested for model inference.
+## Actual activation requirements and limits
 
-The deployment is a single-instance CPU pilot. It has no distributed job queue, shared rate limiter or proven paid-customer concurrency SLA. Spoken input is English and turn-based; automatic full-duplex barge-in and voice cloning are not included. There is no verified 120 fps, large-scale load-test, GPU benchmark, or proprietary reference-site parity. No public launch, cloud account purchase, or staff hiring was performed.
+Before public paid use, configure and test the real HTTPS host/domain, SMTP sender/inbox delivery, stable master-key secret, selected provider/model access, chosen-host restore and alerting, and Stripe test checkout/portal/public webhook. Test real Atlas/R2 accounts if selected. Complete business identity/support/jurisdiction/backup-retention details in the notices and obtain appropriate review. Local archives do not back up remote R2 objects.
 
-The founder's rollout/staffing decision is documented in [STARTUP-PLAN.md](STARTUP-PLAN.md). Keep invitations and usage bounded, collect real pilot feedback, and reopen the release verdict when the actual hosting/account/scale prerequisites change.
+Single-instance quotas/queues are implemented; distributed queue/rate limiting, multi-instance orchestration and paid-customer concurrency SLAs are not. A provider may charge an interrupted/failed request even when BENAI quota is refunded. HeyGen creation interrupted before external-ID persistence can require dashboard reconciliation. Protected backup hashes detect corruption, not malicious rewriting by someone who controls the archive. Production master-key rotation requires a deliberate migration; losing the key makes saved secrets unreadable.
+
+No public deployment, ads, hiring, provider purchase or unsolicited outreach occurred. See [V3-FEATURES.md](V3-FEATURES.md), [V3-OPERATIONS.md](V3-OPERATIONS.md) and [GROWTH-PLAN.md](GROWTH-PLAN.md). The previous release report is preserved in [QC-V2.md](QC-V2.md).

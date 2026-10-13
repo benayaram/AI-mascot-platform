@@ -54,7 +54,15 @@ function requestBody(avatar, messages, stream = false) {
   return {
     model: "local",
     messages: [
-      { role: "system", content: avatar.prompt.slice(0, 2500) },
+      {
+        role: "system",
+        content:
+          avatar.prompt.slice(0, 2500) +
+          (avatar.knowledge_text
+            ? "\nBusiness reference facts (do not invent missing details):\n" +
+              avatar.knowledge_text.slice(0, 4000)
+            : ""),
+      },
       ...history.map((m) => ({ ...m, content: m.content.slice(0, 5000) })),
     ],
     max_tokens: 180,

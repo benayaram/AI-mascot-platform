@@ -14,8 +14,11 @@ from transformers import WhisperFeatureExtractor,WhisperModel
 import mediapipe as mp
 from mediapipe.tasks import python as tasks
 from mediapipe.tasks.python import vision
+from fast_portrait import render_fast
 root=Path(os.getenv('BENAI_RUNTIME_DIR','/workspace/benai-runtime'))/'models'
-device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+requested_device=os.getenv('BENAI_DEVICE','cpu')
+if requested_device=='cuda' and not torch.cuda.is_available():raise RuntimeError('CUDA was requested but no compatible GPU runtime is available')
+device=torch.device('cuda' if requested_device in ('auto','cuda') and torch.cuda.is_available() else 'cpu')
 dtype=torch.float16 if device.type=='cuda' else torch.float32
 torch.set_num_threads(int(os.getenv('BENAI_PORTRAIT_THREADS','4')))
 vae=AutoencoderKL.from_pretrained(root/'portrait-vae',local_files_only=True,use_safetensors=True).to(device,dtype).eval()
@@ -27,11 +30,21 @@ whisper=WhisperModel.from_pretrained(root/'whisper-encoder',local_files_only=Tru
 extractor=WhisperFeatureExtractor.from_pretrained(root/'whisper-encoder',local_files_only=True)
 landmarker=vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(base_options=tasks.BaseOptions(model_asset_path=str(root/'face-landmarker.task')),num_faces=2))
 lock=threading.Lock()
+fast_lock=threading.Lock()
+face_lock=threading.Lock()
 def render(data):
+ global device,dtype,vae,unet,whisper
+ selected=data.get('compute',device.type)
+ if selected=='gpu':selected='cuda'
+ if selected not in ('cpu','cuda'):raise ValueError('Select CPU or GPU compute')
+ if selected=='cuda' and not torch.cuda.is_available():raise ValueError('GPU is unavailable on this worker. Use CPU or configure a GPU worker.')
+ if selected!=device.type:
+  device=torch.device(selected);dtype=torch.float16 if selected=='cuda' else torch.float32
+  vae=vae.to(device,dtype);unet=unet.to(device,dtype);whisper=whisper.to(device,dtype)
  start=time.perf_counter();fps=25 if device.type=='cuda' else 12
  image=Image.open(io.BytesIO(base64.b64decode(data['image'],validate=True))).convert('RGB');image.thumbnail((640,640))
  # A real face model determines the crop; reject absent/ambiguous portraits.
- result=landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB,data=np.asarray(image)))
+ with face_lock:result=landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB,data=np.asarray(image)))
  if len(result.face_landmarks)!=1:raise ValueError('Use a clear front-facing portrait with one visible face')
  points=result.face_landmarks[0];xs=[p.x for p in points];ys=[p.y for p in points]
  cx=(min(xs)+max(xs))/2;cy=(min(ys)+max(ys))/2;size=max((max(xs)-min(xs))*image.width,(max(ys)-min(ys))*image.height)*1.12
@@ -76,15 +89,17 @@ class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
  def send(self,status,body):
   encoded=json.dumps(body).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(encoded)));self.end_headers();self.wfile.write(encoded)
- def do_GET(self):self.send(200,{'status':'ok','model':'MuseTalk-1.5','device':device.type,'realtime_neural':False,'max_seconds':30 if device.type=='cuda' else 6,'busy':lock.locked()})
+ def do_GET(self):self.send(200,{'status':'ok','model':'MuseTalk-1.5','device':device.type,'devices':['cpu','cuda'] if torch.cuda.is_available() else ['cpu'],'fast_portraits':True,'realtime_neural':False,'max_seconds':30 if device.type=='cuda' else 6,'busy':lock.locked(),'fast_busy':fast_lock.locked()})
  def do_POST(self):
-  if self.path!='/render':self.send(404,{'error':'Endpoint not found'});return
+  if self.path not in ('/render','/render-fast'):self.send(404,{'error':'Endpoint not found'});return
   length=int(self.headers.get('Content-Length','0'))
   if not 0<length<12*1024*1024:self.send(413,{'error':'Payload too large'});return
-  if not lock.acquire(blocking=False):self.send(429,{'error':'Neural renderer is busy'});return
-  try:self.send(200,render(json.loads(self.rfile.read(length))))
+  selected_lock=fast_lock if self.path=='/render-fast' else lock
+  if not selected_lock.acquire(blocking=False):self.send(429,{'error':'Portrait renderer is busy'});return
+  try:
+   data=json.loads(self.rfile.read(length));self.send(200,render_fast(data,landmarker,face_lock) if self.path=='/render-fast' else render(data))
   except ValueError as e:self.send(422,{'error':str(e)})
   except Exception as e:print('Neural render failure:',type(e).__name__,str(e)[:200],flush=True);self.send(500,{'error':'Local neural renderer failed. Check the worker log.'})
-  finally:lock.release()
+  finally:selected_lock.release()
 print(f'BENAI neural portrait service ready ({device.type})',flush=True)
 ThreadingHTTPServer(('127.0.0.1',int(os.getenv('PORTRAIT_PORT','8084'))),Handler).serve_forever()

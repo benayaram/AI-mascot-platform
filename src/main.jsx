@@ -65,8 +65,16 @@ import "./style.css";
 import { useLiveVoice } from "./useLiveVoice";
 import { useRealtime } from "./useRealtime";
 import PortraitAvatar from "./PortraitAvatar";
-const Auth = createContext(null),
-  Toast = createContext(() => {});
+import { Auth, Toast } from "./contexts";
+import {
+  AISettings,
+  AccountPage,
+  GrowthPage,
+  DemoPage,
+  OperationsPage,
+  RecoveryPage,
+  LegalPage,
+} from "./V3Pages";
 const colors = {
   nova: "#e7ddfc",
   atlas: "#d9eef3",
@@ -196,6 +204,9 @@ function App() {
     }
   }
   useEffect(() => {
+    const ref = new URLSearchParams(location.search).get("ref");
+    if (/^[a-f0-9]{12}$/.test(ref || ""))
+      sessionStorage.setItem("benai-ref", ref);
     refresh();
     return () => clearTimeout(timer.current);
   }, []);
@@ -207,6 +218,21 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<AuthPage />} />
             <Route path="/signup" element={<AuthPage register />} />
+            <Route
+              path="/forgot-password"
+              element={<RecoveryPage mode="forgot" />}
+            />
+            <Route
+              path="/reset-password"
+              element={<RecoveryPage mode="reset" />}
+            />
+            <Route
+              path="/verify-email"
+              element={<RecoveryPage mode="verify" />}
+            />
+            <Route path="/d/:id" element={<DemoPage />} />
+            <Route path="/privacy" element={<LegalPage />} />
+            <Route path="/terms" element={<LegalPage terms />} />
             <Route element={<Layout />}>
               <Route path="/overview" element={<Overview />} />
               <Route path="/avatars" element={<Avatars />} />
@@ -216,6 +242,10 @@ function App() {
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/billing" element={<Billing />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/ai-settings" element={<AISettings />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/growth" element={<GrowthPage />} />
+              <Route path="/operations" element={<OperationsPage />} />
             </Route>
             <Route
               path="*"
@@ -363,7 +393,7 @@ function Landing() {
         </div>
         <section className="landing-section">
           <span className="eyebrow">
-            BENAI V2 · YOUR MODELS. YOUR CHARACTERS.
+            BENAI V3 · YOUR CHARACTERS. YOUR VOICE.
           </span>
           <div className="section-heading">
             <div>
@@ -535,12 +565,20 @@ function AuthPage({ register = false }) {
   async function submit(e) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const ref =
+      new URLSearchParams(location.search).get("ref") ||
+      sessionStorage.getItem("benai-ref");
     setBusy(true);
     setError("");
     try {
       const data = await api("/auth/" + (register ? "register" : "login"), {
         method: "POST",
-        body: Object.fromEntries(form),
+        body: {
+          ...Object.fromEntries(form),
+          ...(register && /^[a-f0-9]{12}$/.test(ref || "")
+            ? { referral: ref }
+            : {}),
+        },
       });
       setCsrf(data.csrf);
       await refresh();
@@ -637,6 +675,7 @@ function AuthPage({ register = false }) {
               {register ? "Sign in" : "Create an account"}
             </Link>
           </p>
+          {!register && <Link to="/forgot-password">Forgot password?</Link>}
           <div className="auth-note">
             <Shield size={16} />
             <span>
@@ -657,6 +696,9 @@ const navItems = [
   [MessageSquare, "Conversations", "/conversations"],
   [Video, "Video studio", "/videos"],
   [Code2, "Integrations", "/integrations"],
+  [Settings, "AI & compute", "/ai-settings"],
+  [Sparkles, "Grow your audience", "/growth"],
+  [Shield, "Account & privacy", "/account"],
 ];
 function Layout() {
   const { user, loading, usage, refresh, providers } = useContext(Auth),
@@ -717,6 +759,12 @@ function Layout() {
             <NavLink to="/admin">
               <Shield size={19} />
               Admin platform
+            </NavLink>
+          )}
+          {user.role === "admin" && (
+            <NavLink to="/operations">
+              <Settings size={19} />
+              Service operations
             </NavLink>
           )}
         </nav>
@@ -791,7 +839,7 @@ function Layout() {
             <span className="status-pill">
               <span className="live-dot" />
               {providers?.ai
-                ? "V2 · Local AI"
+                ? "V3 · Local or your providers"
                 : providers?.demo
                   ? "Demo mode"
                   : "AI offline"}
@@ -1632,7 +1680,10 @@ function Studio() {
     anim = useRef(),
     mic = useRef(),
     stream = useRef(),
-    alive = useRef(true);
+    alive = useRef(true),
+    audioQueue = useRef([]),
+    queuePlaying = useRef(false),
+    playbackDone = useRef(null);
   const live = useLiveVoice({
     busy,
     speaking,
@@ -1667,7 +1718,11 @@ function Studio() {
     const container = end.current?.parentElement;
     container?.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
-  function stopAudio() {
+  function stopAudio(clearQueue = true) {
+    if (clearQueue) audioQueue.current = [];
+    playbackDone.current?.();
+    playbackDone.current = null;
+    audioCtx.current?.close().catch(() => {});
     audio.current?.pause();
     window.speechSynthesis?.cancel();
     setSpeaking(false);
@@ -1675,9 +1730,9 @@ function Studio() {
     cancelAnimationFrame(anim.current);
   }
   async function say(content, suppliedAudio = null) {
-    stopAudio();
+    stopAudio(false);
     try {
-      if (providers?.tts) {
+      if (suppliedAudio || providers?.tts) {
         const blob =
           suppliedAudio ||
           (await api("/tts", {
@@ -1702,7 +1757,12 @@ function Studio() {
           setLevel(data.reduce((s, v) => s + v, 0) / data.length / 255);
           anim.current = requestAnimationFrame(tick);
         }
+        const ended = new Promise((resolve) => {
+          playbackDone.current = resolve;
+        });
         a.onended = () => {
+          playbackDone.current?.();
+          playbackDone.current = null;
           URL.revokeObjectURL(url);
           cancelAnimationFrame(anim.current);
           ctx.close();
@@ -1712,6 +1772,7 @@ function Studio() {
         setSpeaking(true);
         await a.play();
         tick();
+        await ended;
         await refresh();
       } else if ("speechSynthesis" in window) {
         const u = new SpeechSynthesisUtterance(content);
@@ -1765,7 +1826,18 @@ function Studio() {
         const bytes = Uint8Array.from(atob(event.audio), (c) =>
           c.charCodeAt(0),
         );
-        say("", new Blob([bytes], { type: event.mime }));
+        audioQueue.current.push(new Blob([bytes], { type: event.mime }));
+        if (!queuePlaying.current) {
+          queuePlaying.current = true;
+          (async () => {
+            try {
+              while (audioQueue.current.length && alive.current)
+                await say("", audioQueue.current.shift());
+            } finally {
+              queuePlaying.current = false;
+            }
+          })();
+        }
       }
       if (event.type === "done") {
         setTiming(event.timing);
@@ -1948,8 +2020,11 @@ function Studio() {
           <small className="stage-disclaimer">
             {providers?.tts
               ? avatar?.kind === "realistic"
-                ? "Live face mesh · Self-hosted voice"
-                : "Local neural voice · Audio-responsive animation"
+                ? "Live face mesh · " +
+                  (providers.ttsProvider || "local") +
+                  " voice"
+                : (providers.ttsProvider || "local") +
+                  " voice · Audio-responsive animation"
               : "Browser voice · Simplified speech animation"}
           </small>
         </section>
@@ -2192,7 +2267,11 @@ function Videos() {
       "Welcome to BENAI! I’m your friendly AI character. Let’s bring your next great idea to life.",
     ),
     [busy, setBusy] = useState(false),
-    [preview, setPreview] = useState(null);
+    [preview, setPreview] = useState(null),
+    [compute, setCompute] = useState("cpu"),
+    [quality, setQuality] = useState("fast"),
+    [runtime, setRuntime] = useState(null),
+    [videoProvider, setVideoProvider] = useState("local");
   async function load() {
     try {
       const d = await api("/videos");
@@ -2203,6 +2282,14 @@ function Videos() {
   }
   useEffect(() => {
     load();
+    api("/provider-settings")
+      .then((d) => {
+        setCompute(d.settings.compute);
+        setQuality(d.settings.quality);
+        setRuntime(d.compute);
+        setVideoProvider(d.settings.video);
+      })
+      .catch((e) => toast(e.message, "error"));
   }, []);
   useEffect(() => {
     if (!rows.some((v) => v.status === "processing")) return;
@@ -2217,7 +2304,7 @@ function Videos() {
       } catch (e) {
         toast(e.message, "error");
       }
-    }, 5000);
+    }, 1200);
     return () => clearInterval(id);
   }, [rows]);
   async function render(e) {
@@ -2226,7 +2313,7 @@ function Videos() {
     try {
       await api("/videos", {
         method: "POST",
-        body: { avatar_id: selected, script },
+        body: { avatar_id: selected, script, compute, quality },
       });
       toast("Your video is rendering. It will appear below when ready.");
       load();
@@ -2257,13 +2344,17 @@ function Videos() {
           <LiveAvatar avatar={a} speaking={false} />
           <span className="preview-label">
             {a?.kind === "realistic"
-              ? "MUSETALK NEURAL VIDEO · CPU QUEUE"
+              ? quality === "fast"
+                ? "FAST PORTRAIT · CPU ANIMATION"
+                : "NEURAL LIPS · " + compute.toUpperCase() + " QUEUE"
               : "ILLUSTRATED VIDEO · 640 × 640"}
           </span>
           <h3>{a?.name}</h3>
           <p>
             {a?.kind === "realistic"
-              ? "Local neural lip sync. CPU renders are queued and take longer than playback."
+              ? quality === "fast"
+                ? "Fast audio-driven portrait animation. Image warping, not neural lip synthesis."
+                : "Local neural lip sync. CPU renders take longer than playback; GPU needs an available CUDA worker."
               : "Audio-responsive illustration with a local neural voice."}
           </p>
         </div>
@@ -2289,6 +2380,45 @@ function Videos() {
               ))}
             </select>
           </label>
+          <div className="settings-grid">
+            <label>
+              Compute mode
+              <select
+                aria-label="Video compute mode"
+                value={compute}
+                disabled={videoProvider !== "local"}
+                onChange={(e) => {
+                  setCompute(e.target.value);
+                  if (e.target.value === "gpu") setQuality("neural");
+                }}
+              >
+                <option value="cpu">CPU mode</option>
+                <option value="gpu" disabled={!runtime?.gpu.available}>
+                  GPU mode{!runtime?.gpu.available ? " · unavailable" : ""}
+                </option>
+              </select>
+            </label>
+            <label>
+              Export quality
+              <select
+                aria-label="Export quality"
+                value={quality}
+                disabled={videoProvider !== "local"}
+                onChange={(e) => setQuality(e.target.value)}
+              >
+                <option value="fast" disabled={compute === "gpu"}>
+                  Fast portrait animation
+                </option>
+                <option value="neural">Neural lip sync</option>
+              </select>
+            </label>
+          </div>
+          <p>
+            Video provider: {videoProvider}.{" "}
+            <Link to="/ai-settings">
+              Change provider or connect your own key
+            </Link>
+          </p>
           <label>
             Your script
             <textarea
@@ -2297,20 +2427,31 @@ function Videos() {
               onChange={(e) => setScript(e.target.value)}
               required
               minLength={10}
-              maxLength={a?.kind === "realistic" ? 80 : 1000}
+              maxLength={
+                a?.kind === "realistic" &&
+                quality === "neural" &&
+                compute === "cpu" &&
+                videoProvider === "local"
+                  ? 80
+                  : 1000
+              }
             />
             <small>
-              {a?.kind === "realistic"
-                ? script.length + " / 80 characters · 6 seconds maximum on CPU"
+              {a?.kind === "realistic" &&
+              quality === "neural" &&
+              compute === "cpu" &&
+              videoProvider === "local"
+                ? script.length +
+                  " / 80 characters · 6 seconds maximum on CPU neural mode"
                 : script.length + " / 1,000 characters · 60 seconds maximum"}
             </small>
           </label>
           <div className="info-bar">
             <Info size={17} />
             <p>
-              Free tier includes one video per month. Realistic portraits use
-              the self-hosted neural worker; illustrated characters use the
-              lightweight renderer. Keep realistic scripts short on CPU.
+              Free tier includes one video per month. Fast portraits use
+              lightweight image animation; neural quality is a separate, slower
+              option on CPU. External providers may charge your own account.
             </p>
           </div>
           <Button loading={busy} variant="full">
@@ -2353,6 +2494,15 @@ function Videos() {
                   </a>
                 )}
               </div>
+              {v.render_ms && (
+                <small>
+                  {v.model || "Local"} · {v.device || v.compute || "cpu"} ·{" "}
+                  {(v.render_ms / 1000).toFixed(2)}s render
+                  {v.total_ms
+                    ? " · " + (v.total_ms / 1000).toFixed(2) + "s total"
+                    : ""}
+                </small>
+              )}
               {v.error && <p className="form-error">{v.error}</p>}
             </article>
           ))}

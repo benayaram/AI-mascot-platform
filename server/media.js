@@ -17,6 +17,8 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { dataDir, store } from "./storage.js";
 import { unavailable, providerFetch } from "./providers.js";
+import { customerSpeech, settings } from "./customer-providers.js";
+import { requireCompute } from "./runtime.js";
 export const r2 =
   process.env.R2_ENDPOINT &&
   process.env.R2_ACCESS_KEY_ID &&
@@ -59,6 +61,16 @@ export function run(command, args, { timeout = 120000 } = {}) {
   });
 }
 export async function speech(text, voice = "coral", options = {}) {
+  const { userId, onAudio, ...requestOptions } = options;
+  if (userId) {
+    const external = await customerSpeech(
+      userId,
+      text,
+      options.signal,
+      onAudio,
+    );
+    if (external) return external;
+  }
   if (!process.env.LOCAL_SPEECH_URL) throw unavailable("Local speech");
   return Buffer.from(
     await (
@@ -66,7 +78,7 @@ export async function speech(text, voice = "coral", options = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice }),
-        ...options,
+        ...requestOptions,
       })
     ).arrayBuffer(),
   );
@@ -83,12 +95,23 @@ export function claimRenderer() {
 export function releaseRenderer() {
   rendering = false;
 }
-export async function renderLocalVideo(id, user, avatar, script, refund) {
+export async function renderLocalVideo(
+  id,
+  user,
+  avatar,
+  script,
+  refund,
+  options = {},
+) {
   rendering = true;
   const folder = join(dataDir, "tmp", id);
   mkdirSync(folder, { recursive: true });
   try {
-    const wav = await speech(script, avatar.voice);
+    const started = performance.now();
+    const prefs = await settings(user.id);
+    const compute = options.compute || prefs.compute,
+      quality = options.quality || prefs.quality;
+    const wav = await speech(script, avatar.voice, { userId: user.id });
     const audio = join(folder, "speech.wav");
     writeFileSync(audio, wav);
     const duration = Number(
@@ -108,13 +131,12 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
       );
     const target = join(dataDir, "videos", id + ".mp4");
     if (avatar.kind === "realistic") {
-      if (!process.env.LOCAL_PORTRAIT_URL)
-        throw unavailable("Neural portrait rendering");
+      const portraitUrl = await requireCompute(compute, quality);
       const sourceFile = avatar.image.startsWith("/uploads/")
         ? join(dataDir, avatar.image.slice(1))
         : resolve("public" + avatar.image);
       const response = await providerFetch(
-        process.env.LOCAL_PORTRAIT_URL + "/render",
+        portraitUrl + (quality === "fast" ? "/render-fast" : "/render"),
         {
           method: "POST",
           timeout: 600000,
@@ -122,6 +144,7 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
           body: JSON.stringify({
             image: readFileSync(sourceFile).toString("base64"),
             audio: wav.toString("base64"),
+            compute,
           }),
         },
       );
@@ -151,6 +174,9 @@ export async function renderLocalVideo(id, user, avatar, script, refund) {
           render_ms: rendered.render_ms,
           fps: rendered.fps,
           device: rendered.device,
+          compute,
+          quality,
+          total_ms: Math.round(performance.now() - started),
         },
       );
       return;

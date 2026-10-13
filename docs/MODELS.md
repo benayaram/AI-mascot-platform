@@ -1,4 +1,4 @@
-# V2 model attribution and commercial-use screening
+# V3 local model attribution and commercial-use screening
 
 | Component            | Included selection                     | Published terms/source                                                                                                                                                     |
 | -------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14,7 +14,7 @@
 | Video audio features | openai/whisper-tiny encoder            | Open weights, locally loaded safetensors; [model](https://huggingface.co/openai/whisper-tiny)                                                                              |
 | Face detection/rig   | Google MediaPipe Face Landmarker       | Apache-2.0 project/tasks; [documentation](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)                                                           |
 
-The OpenAI name in the Whisper publisher/model path does **not** mean an OpenAI API is called. V2 does not implement OpenAI or HeyGen API inference. MuseTalk preprocessing uses our MediaPipe crop, not the upstream DWpose/S3FD/face-parsing packages; those omitted detectors/weights are not downloaded. Model terms must still be followed when redistributing a deployment; this document records the selections and sources rather than offering legal advice.
+The OpenAI name in the Whisper publisher/model path does **not** mean an OpenAI API is called. Local inference does not call those APIs. V3 optionally uses customer-owned Gemini/OpenAI/ElevenLabs/HeyGen credentials; external models and account licenses are not bundled open weights. MuseTalk preprocessing uses our MediaPipe crop, not the upstream DWpose/S3FD/face-parsing packages; those omitted detectors/weights are not downloaded. Model terms must still be followed when redistributing a deployment; this document records the selections and sources rather than offering legal advice.
 
 The Piper Ryan voice was considered and excluded: its dataset model card says **CC BY-NC-SA 4.0**. Wav2Lip's research/non-commercial weights were not selected. Non-commercial example videos or portrait photos from the reference products are not used. BENAI's three realistic presets were generated locally and represent fictional people.
 

@@ -5,6 +5,7 @@ import { repo } from "./repository.js";
 import { store, reserve, userUsage } from "./db.js";
 import { streamReply, providerFetch, unavailable } from "./providers.js";
 import { speech } from "./media.js";
+import { settings } from "./customer-providers.js";
 const turns = z
   .object({
     type: z.literal("turn"),
@@ -162,7 +163,22 @@ export function attachRealtime(server) {
           : null;
         if (v.conversation_id && !conversation)
           throw Error("Conversation not found");
-        if (!process.env.LOCAL_AI_URL || !process.env.LOCAL_SPEECH_URL)
+        if (
+          (process.env.NODE_ENV === "production" ||
+            process.env.REQUIRE_VERIFIED_EMAIL === "true") &&
+          user.role !== "admin" &&
+          !user.email_verified
+        )
+          throw Object.assign(
+            Error("Verify your email before using live conversation"),
+            { status: 403 },
+          );
+        const prefs = await settings(user.id);
+        if (
+          !process.env.LOCAL_AI_URL ||
+          (v.audio && !process.env.LOCAL_SPEECH_URL) ||
+          (!process.env.LOCAL_SPEECH_URL && prefs.tts === "local")
+        )
           throw unavailable("Realtime models");
         refundMessage = await reserve(user, "messages");
         refundVoice = await reserve(
@@ -229,15 +245,35 @@ export function attachRealtime(server) {
           return;
         }
         send({ type: "state", state: "synthesizing" });
-        const audio = await speech(content, avatar.voice, { signal });
+        let streamedAudio = false;
+        const audio = await speech(content, avatar.voice, {
+          signal,
+          userId: user.id,
+          onAudio: (chunk) => {
+            if (signal.aborted) return;
+            if (!streamedAudio)
+              timing.audio_first_chunk_ms = Math.round(
+                performance.now() - started,
+              );
+            streamedAudio = true;
+            refundVoice = null;
+            send({
+              type: "audio",
+              audio: chunk.toString("base64"),
+              mime: "audio/wav",
+              streamed: true,
+            });
+          },
+        });
         if (signal.aborted) throw new DOMException("Interrupted", "AbortError");
         timing.audio_ready_ms = Math.round(performance.now() - started);
         refundVoice = null;
-        send({
-          type: "audio",
-          audio: audio.toString("base64"),
-          mime: "audio/wav",
-        });
+        if (!streamedAudio)
+          send({
+            type: "audio",
+            audio: audio.toString("base64"),
+            mime: "audio/wav",
+          });
         send({ type: "done", usage: await userUsage(user.id), timing });
       } catch (e) {
         if (refundMessage) await refundMessage();

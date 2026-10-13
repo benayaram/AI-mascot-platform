@@ -1,20 +1,28 @@
-# BENAI V2 — realistic, self-hosted AI avatars
+# BENAI V3 — fast avatars and customer-owned AI providers
 
-**Release:** `2.0.0-beta.1` · **Branch:** `feat/benai-v2-realistic-self-hosted`
+**Release:** `3.0.0-beta.1` · **Branch:** `feat/benai-v3-low-latency-byok`
 
-BENAI is a working full-stack avatar platform with customer accounts, an admin console, plans, usage limits, realistic and illustrated characters, live voice, neural video exports, widgets, and APIs. V2 removes the OpenAI/HeyGen API integrations: all AI inference uses your own local open-weight models.
+BENAI is a working full-stack avatar platform with customer accounts, an admin console, plans, usage limits, realistic and illustrated characters, live voice, neural video exports, widgets, and APIs. V3 keeps local open-weight inference as the free default and adds encrypted customer-owned Gemini/OpenAI/ElevenLabs TTS and HeyGen video integrations. Customers can choose CPU or an available GPU worker; fast CPU portrait animation is the default export quality.
 
 ![Realistic BENAI studio](docs/v2-studio.png)
+
+See the [complete feature inventory](docs/V3-FEATURES.md), [provider/GPU/mail/backup setup](docs/V3-OPERATIONS.md), and [customer acquisition plan](docs/GROWTH-PLAN.md).
+
+**Measured CPU example:** a 1.4-second fast portrait MP4 rendered in about 0.65–0.70 seconds, about 1.05 seconds end to end. Fast exports use audio-driven pixel warping, not MuseTalk neural lips. The same short neural-quality path still takes roughly 73 seconds on this CPU. These are short samples, not SLAs; inspect [QC-VERDICT.md](docs/QC-VERDICT.md).
+
+**Launch workflows:** verified email/password recovery through SMTP, customer data export/deletion, bounded portrait storage, a service operations screen, readiness monitoring, tested offline SQLite/Mongo backup restoration, business-fact templates, shareable demos, referral attribution and consented leads.
 
 ## What is live, and what is queued?
 
 **Live conversation:** microphone → local Whisper → streaming Qwen 1.5B → local Piper → browser playback and MediaPipe face animation. The authenticated WebSocket streams text and provides cancellable turns, quota checks, persistent history, and real measured timings.
 
+**Video exports:** fast CPU animation runs through the lightweight renderer at 24 fps, with a 60-second cap. Neural quality is selected explicitly.
+
 **Realistic neural video:** local MuseTalk 1.5 generates a talking-head MP4 from your portrait and local speech. On this CPU machine, a short clip took roughly a minute to render. It is a queued export, not realtime neural streaming. The live face animation and the neural video renderer are separate capabilities; the interface identifies both.
 
 **Realistic avatars:** three original synthetic portrait presets, local diffusion portrait generation, consent-confirmed custom uploads, a private media library, and shared face rigging in the app and SDK. Uploaded photographs do not require an external avatar-provider account.
 
-The release verdict is **GO for a supervised CPU pilot; NO-GO for an unattended public commercial launch or realtime neural video streaming on this hardware**. See the evidence and remaining launch gates in [QC-VERDICT.md](docs/QC-VERDICT.md).
+The release verdict is **GO for an invited pilot with the verified local workflows; public deployment/provider/GPU activation still needs actual hosting and account validation**. See the evidence and remaining launch gates in [QC-VERDICT.md](docs/QC-VERDICT.md).
 
 ## Run without paid AI subscriptions
 
@@ -55,6 +63,7 @@ Optional low-resource mode: `BENAI_SKIP_NEURAL=1` skips starting the neural vide
 | Speech recognition        | Whisper tiny.en, faster-whisper int8                 | 8082    |
 | Speech synthesis          | Piper LJSpeech + public-domain Bryce male voice      | 8082    |
 | Portrait generation       | Segmind Tiny-SD, CPU diffusion                       | 8083    |
+| Fast portrait animation   | BENAI audio-driven warp + MediaPipe, CPU             | 8084    |
 | Neural talking-head video | MuseTalk 1.5 + Whisper encoder + SD VAE              | 8084    |
 | Browser face rig          | MediaPipe Face Landmarker, locally served WASM/model | App/SDK |
 
@@ -72,6 +81,8 @@ npm run admin:create -- --email=your@email.com
 
 No default admin password is committed. Alternatively, set `ADMIN_EMAIL` and a secure `ADMIN_PASSWORD` before first startup to bootstrap a new administrator. Existing customers are not silently promoted or given a new password.
 
+Production requires a securely supplied `BYOK_MASTER_KEY`, configured SMTP and `MAIL_FROM`; verification is enforced before compute/payment/public-demo usage. Development keeps a private encryption key file and can use a test-only capture inbox. Read the V3 operations guide before deployment.
+
 Admins manage customer plans/roles, publish avatars, edit personalities and appearance, and inspect audit records. Free/Creator/Business tiers have server-enforced quotas. Concurrent avatar creation cannot exceed the inventory cap. Private portrait downloads and cross-account reuse are restricted; valid public widgets expose only their selected avatar.
 
 ## Cloud storage and customer payments
@@ -85,12 +96,13 @@ Optional **Stripe** collects customer subscriptions. It is not an AI-model depen
 ## Validation and documentation
 
 ```bash
-npm test                     # 18 backend/security/billing checks; model suites are explicitly opt-in
+npm test                     # 35 backend/security/provider/growth/identity checks; eight model cases opt-in
 npm run build
 npm run test:cloud            # real local Mongo replica set + S3 fixture
 npm run test:realtime         # start workers first; actual streaming/voice/cancellation checks
 npm run test:models           # actual local diffusion generation
 npm run test:neural           # actual MuseTalk export through the backend; allow several minutes
+npm run test:fast             # actual fast CPU animated portrait MP4
 npm run test:e2e              # start workers first; installed Chromium required
 ```
 
@@ -102,4 +114,4 @@ To exercise hands-free microphone capture in Chromium, set `BENAI_TEST_AUDIO=/ab
 - [REST/WebSocket APIs](docs/API.md)
 - [Shared realistic/illustrated avatar SDK](docs/SDK.md)
 
-Public hosting, a domain, live payments, Atlas/R2 account verification, email-based recovery/verification, and multi-server operation still require activation or separate implementation. The code is ready for a supervised pilot under the stated conditions, not a claim of complete Mascotbot performance parity.
+Public hosting/domain, live payment/provider/Atlas/R2 account validation, SMTP deliverability and final business/legal details require activation. Verification/recovery, privacy, monitoring commands and backup restoration are implemented; multi-server operation needs additional shared infrastructure. The code is ready for a supervised pilot under the stated conditions, not a claim of complete Mascotbot performance parity.

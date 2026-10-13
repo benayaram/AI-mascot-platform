@@ -1,6 +1,6 @@
 {
   "name": "benai-studio",
-  "version": "2.0.0-beta.1",
+  "version": "3.0.0-beta.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -21,7 +21,15 @@
     "test:models": "BENAI_TEST_MODELS=1 node --test tests/models.test.js",
     "assets:local": "node scripts/prepare-browser-assets.js",
     "test:realtime": "BENAI_TEST_REALTIME=1 node --test tests/realtime.test.js",
-    "test:neural": "BENAI_TEST_NEURAL=1 node --test tests/neural.test.js"
+    "test:neural": "BENAI_TEST_NEURAL=1 node --test tests/neural.test.js",
+    "setup:gpu": "bash scripts/setup-gpu.sh",
+    "services:gpu": "bash scripts/start-gpu.sh",
+    "test:v3": "node --test tests/v3.test.js",
+    "test:fast": "BENAI_TEST_FAST=1 node --test tests/fast.test.js",
+    "backup": "node scripts/backup.js backup",
+    "backup:verify": "node scripts/backup.js verify",
+    "backup:restore": "node scripts/backup.js restore",
+    "monitor": "node scripts/monitor.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
@@ -33,6 +41,7 @@
     "lucide-react": "^0.468.0",
     "mongodb": "^7.7.0",
     "multer": "^2.0.2",
+    "nodemailer": "^10.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.9.0",

@@ -61,6 +61,8 @@ test(
         body: JSON.stringify({
           avatar_id: "amara",
           script: "Hello, I am BENAI.",
+          quality: "neural",
+          compute: "cpu",
         }),
       });
       assert.equal(create.status, 202);
@@ -90,9 +92,9 @@ test(
           .videos,
         1,
       );
-      writeFileSync("/workspace/BENAI-output/v2-neural-portrait.mp4", bytes);
+      writeFileSync("/workspace/BENAI-output/v3-neural-portrait.mp4", bytes);
       writeFileSync(
-        "/tmp/benai-v2-neural-metrics.json",
+        "/tmp/benai-v3-neural-metrics.json",
         JSON.stringify(
           {
             ...video,

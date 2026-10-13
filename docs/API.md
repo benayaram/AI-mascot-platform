@@ -1,4 +1,4 @@
-# BENAI V2 APIs
+# BENAI V3 APIs
 
 ## REST
 
@@ -46,3 +46,32 @@ The local voice pipeline uses silence detection then transcription → streaming
 Monthly quotas use UTC calendar months. HTTP transcription reserves one rounded voice unit and TTS at least one unit per 900 characters. A realtime spoken turn reserves one unit for recognition and one for its synthesized response; text-only realtime turns reserve a voice unit only if speech is requested. Avatar inventory limits persist across months and are atomic under concurrent creation.
 
 Website widgets use revocable opaque embed IDs with only chat/speech and the selected image. Public widgets consume their owner's allowances and cannot retrieve account history, keys or unrelated media. A private portrait shared through a widget is accessible through that still-active widget's scoped image endpoint. Removing the embed revokes that endpoint. Keep account API keys off the frontend.
+
+## V3 routes
+
+Cookie authentication and CSRF protect account/provider management; integration API keys cannot manage customer provider secrets.
+
+| Method      | Path                                                       | Behavior                                                                            |
+| ----------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| GET/PUT     | `/api/provider-settings`                                   | Catalog, credential summaries, choices and verified compute availability            |
+| PUT/DELETE  | `/api/provider-credentials/:provider`                      | Save encrypted credentials / delete and reset selected provider                     |
+| POST        | `/api/provider-credentials/:provider/test`                 | Authenticated model/voice/avatar discovery; does not prove generation entitlement   |
+| POST        | `/api/provider-preview`                                    | Short WAV preview using saved speech choice; voice quota and provider charges apply |
+| GET         | `/api/runtime`                                             | CPU/CUDA worker availability and clip limits                                        |
+| GET         | `/api/ready`                                               | Minimal public readiness; 200 ready / 503 degraded                                  |
+| GET         | `/api/admin/operations`                                    | Admin-only worker/job/configuration status, no raw secrets                          |
+| POST        | `/api/auth/forgot-password`, `/api/auth/reset-password`    | One-use hashed reset token; revokes sessions/API keys                               |
+| POST        | `/api/auth/request-verification`, `/api/auth/verify-email` | Actual SMTP verification and atomic token consumption                               |
+| GET/DELETE  | `/api/account/export`, `/api/account`                      | Cookie-only sanitized export; deletion requires password and `confirmation: DELETE` |
+| GET/DELETE  | `/api/assets`, `/api/assets/:id`                           | Private gallery (all=1 for full bounded inventory); delete unused owned portraits   |
+| GET/POST    | `/api/templates`, `/api/templates/:id/use`                 | Templates; creation with `name` and up to 4,000 characters of business `facts`      |
+| GET         | `/api/growth`                                              | Private demo/lead/referral statistics                                               |
+| POST/DELETE | `/api/demos`, `/api/demos/:id`                             | Opt-in public demo publication and revocation                                       |
+| GET/POST    | `/api/public-demo/:id`, `/visit`, `/chat`, `/leads`        | Public scoped demo, session counts, owner-quota chat, consented lead capture        |
+| DELETE      | `/api/leads/:id`                                           | Owner-only lead removal                                                             |
+
+Video creation accepts optional `compute: cpu|gpu` and `quality: fast|neural`, defaulting to saved settings (new accounts: CPU/fast). The saved video provider chooses local versus HeyGen. GPU availability is checked before reserving video usage. External video uses the customer’s HeyGen avatar/voice IDs and infrastructure.
+
+Gemini 3.8 studio TTS produces multiple `audio` events with `streamed:true` and WAV-wrapped PCM chunks; play them in order. The final `done.timing` includes first-chunk and complete-audio times. Local/OpenAI/ElevenLabs speech currently uses a complete WAV event. Text generation remains local Qwen; speech recognition remains local Whisper. This transport does not implement Gemini Live multimodal sessions or automatic full-duplex barge-in.
+
+All public-demo identifiers are scoped, revokeable capabilities. Demo routes do not gain privileges from account cookies; their public mutations are exempt from cookie CSRF, like widgets, while the server still rejects supplied foreign Origins. No provider key, avatar prompt or business-fact document is returned by demo metadata. The owner agrees to publish the portrait/demo and is responsible for the information the assistant uses.

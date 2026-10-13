@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 process.env.BENAI_E2E_PASSWORD ||= randomBytes(16).toString("hex");
+process.env.BENAI_E2E_MAIL_DIR ||= mkdtempSync(
+  join(tmpdir(), "benai-e2e-mail-"),
+);
 export default defineConfig({
   testDir: "tests/browser",
   timeout: 90000,
@@ -36,6 +39,9 @@ export default defineConfig({
     timeout: 30000,
     env: {
       PORT: "3130",
+      NODE_ENV: "test",
+      SMTP_HOST: "",
+      MAIL_CAPTURE_DIR: process.env.BENAI_E2E_MAIL_DIR,
       APP_URL: "http://127.0.0.1:3130",
       DATA_DIR: mkdtempSync(join(tmpdir(), "benai-e2e-")),
       DEMO_MODE: "false",

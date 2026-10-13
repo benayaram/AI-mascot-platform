@@ -53,6 +53,25 @@ function matches(row, query) {
   });
 }
 export const store = {
+  async consumeOne(collection, query) {
+    if (remote)
+      return remote
+        .collection(collection)
+        .findOneAndDelete(query, { projection: { _id: 0 } });
+    const rows = local
+      .prepare("SELECT id,body FROM documents WHERE collection=?")
+      .all(collection);
+    for (const row of rows)
+      if (matches(JSON.parse(row.body), query)) {
+        const deleted = local
+          .prepare(
+            "DELETE FROM documents WHERE collection=? AND id=? RETURNING body",
+          )
+          .get(collection, row.id);
+        return deleted ? JSON.parse(deleted.body) : null;
+      }
+    return null;
+  },
   async find(collection, query = {}, options = {}) {
     if (remote) {
       let c = remote
@@ -62,11 +81,17 @@ export const store = {
       if (options.limit) c = c.limit(options.limit);
       return c.toArray();
     }
-    let rows = local
-      .prepare("SELECT body FROM documents WHERE collection=?")
-      .all(collection)
-      .map((x) => JSON.parse(x.body))
-      .filter((x) => matches(x, query));
+    let rows =
+      collection === "usage"
+        ? local
+            .prepare("SELECT * FROM usage")
+            .all()
+            .filter((x) => matches(x, query))
+        : local
+            .prepare("SELECT body FROM documents WHERE collection=?")
+            .all(collection)
+            .map((x) => JSON.parse(x.body))
+            .filter((x) => matches(x, query));
     if (options.sort)
       rows.sort((a, b) => {
         for (const [key, dir] of Object.entries(options.sort)) {
@@ -112,6 +137,13 @@ export const store = {
   async remove(collection, query) {
     if (remote) return remote.collection(collection).deleteMany(query);
     const rows = await this.find(collection, query);
+    if (collection === "usage") {
+      for (const row of rows)
+        local
+          .prepare("DELETE FROM usage WHERE user_id=? AND period=? AND kind=?")
+          .run(row.user_id, row.period, row.kind);
+      return { deletedCount: rows.length };
+    }
     for (const r of rows)
       local
         .prepare("DELETE FROM documents WHERE collection=? AND id=?")

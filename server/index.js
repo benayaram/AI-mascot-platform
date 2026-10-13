@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import {
   randomUUID,
@@ -36,6 +36,13 @@ const {
 const { reconcileSubscription } = await import("./billing.js");
 const { attachRealtime } = await import("./realtime.js");
 const { repo } = await import("./repository.js");
+const { installProviderRoutes } = await import("./v3-routes.js");
+const { settings } = await import("./customer-providers.js");
+const { requireCompute } = await import("./runtime.js");
+const { renderHeyGen } = await import("./heygen.js");
+const { installAccountRoutes, sendAccountMail, mailAvailable } =
+  await import("./accounts.js");
+const { installGrowthRoutes, referralCode } = await import("./growth.js");
 const { default: express } = await import("express");
 const { default: helmet } = await import("helmet");
 const { rateLimit } = await import("express-rate-limit");
@@ -56,6 +63,7 @@ const safeUser = (u) => ({
   role: u.role,
   plan: u.plan,
   created_at: u.created_at,
+  email_verified: !!u.email_verified,
 });
 const fail = (status, msg) => {
   const e = new Error(msg);
@@ -129,7 +137,20 @@ app.use(
   "/api",
   rateLimit({
     windowMs: 60000,
+    limit: 600,
+    skip: (req) => !["GET", "HEAD", "OPTIONS"].includes(req.method),
+    message: { error: "Too many read requests. Wait a minute and try again." },
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  }),
+);
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 60000,
     limit: 180,
+    skip: (req) => ["GET", "HEAD", "OPTIONS"].includes(req.method),
+    message: { error: "Too many changes. Wait a minute and try again." },
     standardHeaders: "draft-8",
     legacyHeaders: false,
   }),
@@ -165,6 +186,7 @@ app.use("/api", async (req, res, next) => {
         req.user &&
         !req.apiKey &&
         !req.path.startsWith("/embed/") &&
+        !req.path.startsWith("/public-demo/") &&
         req.headers["x-csrf-token"] !== req.csrf
       )
         fail(403, "Invalid CSRF token");
@@ -208,8 +230,55 @@ async function session(req, res, user) {
 const loginLimiter = rateLimit({
   windowMs: 15 * 60000,
   limit: 20,
+  message: {
+    error:
+      "Too many sign-in or recovery attempts. Wait 15 minutes and try again.",
+  },
   standardHeaders: "draft-8",
   legacyHeaders: false,
+});
+app.use("/api", (req, res, next) => {
+  if (
+    (production || process.env.REQUIRE_VERIFIED_EMAIL === "true") &&
+    req.user &&
+    req.user.role !== "admin" &&
+    !req.user.email_verified &&
+    req.method !== "GET" &&
+    /^\/(chat|v1|tts|transcribe|images|avatars\/generate|videos|keys|embeds|provider-preview|billing\/checkout)/.test(
+      req.path,
+    )
+  )
+    return res.status(403).json({
+      error:
+        "Verify your email before using paid or compute-intensive features",
+    });
+  next();
+});
+installProviderRoutes({ app, auth, admin, parse, z, audit, fail });
+installAccountRoutes({
+  app,
+  auth,
+  parse,
+  z,
+  fail,
+  passwordHash,
+  password,
+  email,
+  appUrl,
+  loginLimiter,
+  audit,
+});
+installGrowthRoutes({
+  app,
+  auth,
+  parse,
+  z,
+  fail,
+  avatarFor,
+  rateLimit,
+  email,
+  appUrl,
+  audit,
 });
 app.get("/api/health", async (req, res) =>
   res.json({ status: "ok", storage: store.engine, providers: providers() }),
@@ -244,7 +313,7 @@ app.get("/api/models", auth, async (req, res) => {
     }),
   );
   res.json({
-    release: "2.0.0-beta.1",
+    release: "3.0.0-beta.1",
     models,
     voice_transport: "self-hosted-websocket",
     live_visual: "local-face-mesh",
@@ -254,13 +323,37 @@ app.get("/api/models", auth, async (req, res) => {
 app.get("/api/plans", async (req, res) => res.json({ plans }));
 app.post("/api/auth/register", loginLimiter, async (req, res) => {
   const v = parse(
-    z.object({ name: z.string().trim().min(2).max(80), email, password }),
+    z.object({
+      name: z.string().trim().min(2).max(80),
+      email,
+      password,
+      referral: z
+        .string()
+        .regex(/^[a-f0-9]{12}$/)
+        .optional(),
+    }),
     req.body,
   );
   if (await repo.userByEmail(v.email))
     fail(409, "An account with this email already exists");
   const id = randomUUID();
   await repo.createUser(id, v.email, v.name, passwordHash(v.password));
+  const referrer = v.referral
+    ? await store.one("users", { referral_code: v.referral })
+    : null;
+  await store.update(
+    "users",
+    { id },
+    {
+      email_verified: false,
+      referral_code: referralCode(id),
+      ...(referrer ? { referred_by: referrer.id } : {}),
+    },
+  );
+  if (mailAvailable())
+    await sendAccountMail(await repo.user(id), "verify", appUrl).catch(() =>
+      audit(id, "email.delivery_failed", {}),
+    );
   await session(req, res, await repo.user(id));
 });
 app.post("/api/auth/login", loginLimiter, async (req, res) => {
@@ -278,14 +371,25 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     fail(401, "Incorrect email or password");
   await session(req, res, u);
 });
-app.get("/api/auth/me", auth, async (req, res) =>
+app.get("/api/auth/me", auth, async (req, res) => {
+  const p = await settings(req.user.id),
+    external =
+      p.tts !== "local" &&
+      !!(await store.one("provider_credentials", {
+        id: req.user.id + ":" + p.tts,
+      }));
   res.json({
     user: safeUser(req.user),
     csrf: req.csrf,
     usage: await userUsage(req.user.id),
-    providers: providers(),
-  }),
-);
+    providers: {
+      ...providers(),
+      tts: !!process.env.LOCAL_SPEECH_URL || external,
+      ttsProvider: p.tts,
+      videoProvider: p.video,
+    },
+  });
+});
 app.post("/api/auth/logout", auth, async (req, res) => {
   const cookie = req.headers.cookie
     ?.split(";")
@@ -497,12 +601,24 @@ app.post("/api/uploads", auth, upload.single("image"), async (req, res) => {
   } catch {
     fail(400, "The image is corrupt or exceeds 32 megapixels");
   }
-  writeFileSync(join(dataDir, "uploads", filename), pixels, { flag: "wx" });
-  await store.insert("assets", {
-    id: filename,
-    owner_id: req.user.id,
-    kind: req.body.kind === "realistic" ? "realistic" : "illustrated",
-  });
+  const undo = await reserveInventory(
+    req.user,
+    "assets",
+    plans[req.user.plan].avatars * 4,
+    await store.count("assets", { owner_id: req.user.id }),
+  );
+  try {
+    writeFileSync(join(dataDir, "uploads", filename), pixels, { flag: "wx" });
+    await store.insert("assets", {
+      id: filename,
+      owner_id: req.user.id,
+      kind: req.body.kind === "realistic" ? "realistic" : "illustrated",
+    });
+  } catch (e) {
+    rmSync(join(dataDir, "uploads", filename), { force: true });
+    await undo();
+    throw e;
+  }
   res.status(201).json({ image: "/uploads/" + filename });
 });
 app.post("/api/avatars/generate", auth, async (req, res) => {
@@ -514,11 +630,19 @@ app.post("/api/avatars/generate", auth, async (req, res) => {
     req.body,
   );
   const refund = await reserve(req.user, "images");
+  let undoAsset, generatedFile;
   try {
+    undoAsset = await reserveInventory(
+      req.user,
+      "assets",
+      plans[req.user.plan].avatars * 4,
+      await store.count("assets", { owner_id: req.user.id }),
+    );
     if (!process.env.LOCAL_IMAGE_URL) {
       if (v.style === "realistic")
         throw unavailable("Realistic portrait generation");
       const image = await illustration(v.prompt);
+      generatedFile = join(dataDir, image.slice(1));
       await store.insert("assets", {
         id: image.split("/").pop(),
         owner_id: req.user.id,
@@ -537,6 +661,7 @@ app.post("/api/avatars/generate", auth, async (req, res) => {
     const d = await r.json();
     if (!d.images?.[0]) fail(502, "Image model did not return a portrait");
     const filename = randomUUID() + ".png";
+    generatedFile = join(dataDir, "uploads", filename);
     const pixels = Buffer.from(d.images[0], "base64");
     await (
       await import("sharp")
@@ -555,6 +680,8 @@ app.post("/api/avatars/generate", auth, async (req, res) => {
       synthetic: true,
     });
   } catch (e) {
+    if (generatedFile) rmSync(generatedFile, { force: true });
+    if (undoAsset) await undoAsset();
     await refund();
     throw e;
   }
@@ -565,7 +692,7 @@ app.get("/api/assets", auth, async (req, res) =>
       await store.find(
         "assets",
         { owner_id: req.user.id },
-        { sort: { created_at: -1 }, limit: 30 },
+        { sort: { created_at: -1 }, limit: req.query.all === "1" ? 400 : 30 },
       )
     ).map((a) => ({
       id: a.id,
@@ -575,6 +702,27 @@ app.get("/api/assets", auth, async (req, res) =>
     })),
   }),
 );
+app.delete("/api/assets/:id", auth, async (req, res) => {
+  const asset = await store.one("assets", {
+    id: req.params.id,
+    owner_id: req.user.id,
+  });
+  if (!asset) fail(404, "Portrait not found");
+  if (await store.one("avatars", { image: "/uploads/" + asset.id }))
+    fail(409, "Remove avatars using this portrait before deleting it");
+  await store.ensureInventory(
+    req.user.id,
+    "assets",
+    await store.count("assets", { owner_id: req.user.id }),
+  );
+  if (
+    !(await store.consumeOne("assets", { id: asset.id, owner_id: req.user.id }))
+  )
+    fail(404, "Portrait not found");
+  rmSync(join(dataDir, "uploads", asset.id), { force: true });
+  await store.refund(req.user.id, "inventory", "assets", 1);
+  res.json({ ok: true });
+});
 app.get("/api/conversations", auth, async (req, res) =>
   res.json({ conversations: await repo.conversations(req.user.id) }),
 );
@@ -644,14 +792,20 @@ app.post(["/api/tts", "/api/v1/tts"], auth, async (req, res) => {
     }),
     req.body,
   );
-  if (!process.env.LOCAL_SPEECH_URL) throw unavailable("Speech synthesis");
+  if (
+    !process.env.LOCAL_SPEECH_URL &&
+    (await settings(req.user.id)).tts === "local"
+  )
+    throw unavailable("Speech synthesis");
   const refund = await reserve(
     req.user,
     "voice",
     Math.max(1, Math.ceil(v.text.length / 900)),
   );
   try {
-    res.type("audio/wav").send(await speech(v.text, v.voice));
+    res
+      .type("audio/wav")
+      .send(await speech(v.text, v.voice, { userId: req.user.id }));
   } catch (e) {
     await refund();
     throw e;
@@ -790,7 +944,9 @@ app.post("/api/embed/:id/tts", embedLimit, async (req, res) => {
     Math.max(1, Math.ceil(v.text.length / 900)),
   );
   try {
-    res.type("audio/wav").send(await speech(v.text, a.voice));
+    res
+      .type("audio/wav")
+      .send(await speech(v.text, a.voice, { userId: user.id }));
   } catch (e) {
     await refund();
     throw e;
@@ -805,13 +961,22 @@ app.post(["/api/videos", "/api/v1/videos"], auth, async (req, res) => {
     z.object({
       avatar_id: z.string(),
       script: z.string().trim().min(10).max(1000),
+      compute: z.enum(["cpu", "gpu"]).optional(),
+      quality: z.enum(["fast", "neural"]).optional(),
     }),
     req.body,
   );
   const a = await avatarFor(req.user, v.avatar_id);
-  if (a.kind === "realistic" && !process.env.LOCAL_PORTRAIT_URL)
-    throw unavailable("Neural portrait rendering");
-  if (process.env.LOCAL_SPEECH_URL) {
+  const prefs = await settings(req.user.id),
+    compute = v.compute || prefs.compute,
+    quality = v.quality || prefs.quality;
+  if (prefs.video === "local" && a.kind === "realistic")
+    await requireCompute(compute, quality);
+  if (
+    process.env.LOCAL_SPEECH_URL ||
+    prefs.tts !== "local" ||
+    prefs.video === "heygen"
+  ) {
     if (!claimRenderer())
       fail(429, "A video is currently rendering. Try again shortly.");
     let refund;
@@ -824,9 +989,18 @@ app.post(["/api/videos", "/api/v1/videos"], auth, async (req, res) => {
         a.id,
         v.script,
         "processing",
-        "local",
+        prefs.video,
       );
-      renderLocalVideo(id, req.user, a, v.script, refund);
+      await store.update("videos", { id }, { compute, quality });
+      if (prefs.video === "heygen")
+        renderHeyGen(id, req.user, a, v.script, refund).finally(
+          releaseRenderer,
+        );
+      else
+        renderLocalVideo(id, req.user, a, v.script, refund, {
+          compute,
+          quality,
+        });
       res.status(202).json({ id, status: "processing" });
     } catch (e) {
       releaseRenderer();
@@ -985,10 +1159,7 @@ app.use((err, req, res, next) => {
 });
 async function recoverLocalJobs() {
   if (!process.env.LOCAL_SPEECH_URL) return;
-  const pending = await store.find("videos", {
-    status: "processing",
-    provider_id: "local",
-  });
+  const pending = await store.find("videos", { status: "processing" });
   for (const job of pending) {
     while (rendererBusy()) await new Promise((r) => setTimeout(r, 500));
     claimRenderer();
@@ -1003,9 +1174,23 @@ async function recoverLocalJobs() {
       releaseRenderer();
       continue;
     }
-    await renderLocalVideo(job.id, user, avatar, job.script, () =>
-      store.refund(user.id, job.created_at.slice(0, 7), "videos", 1),
-    );
+    const refund = () =>
+      store.refund(user.id, job.created_at.slice(0, 7), "videos", 1);
+    if (job.provider_id === "heygen") {
+      await renderHeyGen(
+        job.id,
+        user,
+        avatar,
+        job.script,
+        refund,
+        job.external_id,
+      );
+      releaseRenderer();
+    } else
+      await renderLocalVideo(job.id, user, avatar, job.script, refund, {
+        compute: job.compute || "cpu",
+        quality: job.quality || "neural",
+      });
   }
 }
 recoverLocalJobs().catch(() => console.error("Could not recover video jobs"));
