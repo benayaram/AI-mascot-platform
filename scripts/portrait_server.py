@@ -41,14 +41,18 @@ def render(data):
  if selected!=device.type:
   device=torch.device(selected);dtype=torch.float16 if selected=='cuda' else torch.float32
   vae=vae.to(device,dtype);unet=unet.to(device,dtype);whisper=whisper.to(device,dtype)
- start=time.perf_counter();fps=25 if device.type=='cuda' else 12
+ start=time.perf_counter();fps=25
  image=Image.open(io.BytesIO(base64.b64decode(data['image'],validate=True))).convert('RGB');image.thumbnail((640,640))
  # A real face model determines the crop; reject absent/ambiguous portraits.
  with face_lock:result=landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB,data=np.asarray(image)))
  if len(result.face_landmarks)!=1:raise ValueError('Use a clear front-facing portrait with one visible face')
  points=result.face_landmarks[0];xs=[p.x for p in points];ys=[p.y for p in points]
- cx=(min(xs)+max(xs))/2;cy=(min(ys)+max(ys))/2;size=max((max(xs)-min(xs))*image.width,(max(ys)-min(ys))*image.height)*1.12
- x1=max(0,round(cx*image.width-size/2));y1=max(0,round(cy*image.height-size/2));x2=min(image.width,round(cx*image.width+size/2));y2=min(image.height,round(cy*image.height+size/2));box=(x1,y1,x2,y2)
+ # Match MuseTalk training: nose landmark at crop mid-height, chin at its base.
+ # A square whole-face crop shifts the mouth relative to the masked VAE input.
+ nose=points[4].y*image.height;chin=max(ys)*image.height
+ x1=max(0,round(min(xs)*image.width));x2=min(image.width,round(max(xs)*image.width))
+ y1=max(0,round(nose-(chin-nose)));y2=min(image.height,round(chin+10));box=(x1,y1,x2,y2)
+ if x2-x1<48 or y2-y1<48:raise ValueError('The face is too small; use a clear close-up portrait')
  face=image.crop(box).resize((256,256),Image.Resampling.LANCZOS)
  audio=base64.b64decode(data['audio'],validate=True)
  with tempfile.TemporaryDirectory(prefix='benai-neural-') as folder:
@@ -66,12 +70,15 @@ def render(data):
    latent=torch.cat([vae.encode(masked*2-1).latent_dist.mode(),vae.encode(ref*2-1).latent_dist.mode()],dim=1)*vae.config.scaling_factor
    hidden=whisper.encoder(features,output_hidden_states=True).hidden_states
    hidden=torch.stack(hidden,dim=2)[:,:math.floor(duration*50)]
-   padding=math.ceil(50/fps)*2
+   padding=4 # 80 ms left context; Whisper features stay at 50 Hz at every output FPS
    hidden=torch.cat([torch.zeros_like(hidden[:,:padding]),hidden,torch.zeros_like(hidden[:,:padding*3])],dim=1)
    seq=torch.arange(50,device=device).unsqueeze(1);div=torch.exp(torch.arange(0,384,2,device=device)*(-math.log(10000)/384));pe=torch.zeros(50,384,device=device,dtype=dtype);pe[:,0::2]=torch.sin(seq*div);pe[:,1::2]=torch.cos(seq*div)
    output=Path(folder)/'portrait.mp4'
    encoder=subprocess.Popen(['ffmpeg','-y','-v','error','-f','rawvideo','-pix_fmt','rgb24','-s',f'{image.width//2*2}x{image.height//2*2}','-r',str(fps),'-i','pipe:0','-i',str(normalized),'-c:v','libx264','-threads','2','-pix_fmt','yuv420p','-c:a','aac','-shortest','-movflags','+faststart',str(output)],stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
-   mask=Image.new('L',(x2-x1,y2-y1));draw=ImageDraw.Draw(mask);draw.rounded_rectangle((.04*mask.width,.4*mask.height,.96*mask.width,.98*mask.height),radius=.15*mask.width,fill=255);mask=mask.filter(ImageFilter.GaussianBlur(max(2,mask.width*.035)))
+   mask=Image.new('L',(x2-x1,y2-y1));draw=ImageDraw.Draw(mask)
+   mouth_y=((points[13].y+points[14].y)*image.height/2-y1)/mask.height
+   draw.ellipse((.08*mask.width,max(.44,mouth_y-.17)*mask.height,.92*mask.width,.99*mask.height),fill=255)
+   mask=mask.filter(ImageFilter.GaussianBlur(max(1,mask.width*.012)))
    try:
     for frame in range(math.ceil(duration*fps)):
      offset=math.floor(frame*50/fps);chunk=hidden[:,offset:offset+10].reshape(1,50,384)+pe
@@ -84,7 +91,7 @@ def render(data):
     if encoder.returncode:raise RuntimeError('Video encoding failed')
    except Exception:
     encoder.kill();encoder.wait();raise
-  return {'video':base64.b64encode(output.read_bytes()).decode(),'duration':duration,'render_ms':round((time.perf_counter()-start)*1000),'fps':fps,'model':'MuseTalk-1.5','device':device.type}
+  return {'video':base64.b64encode(output.read_bytes()).decode(),'duration':duration,'render_ms':round((time.perf_counter()-start)*1000),'fps':fps,'model':'MuseTalk-1.5-aligned-v4','device':device.type}
 class Handler(BaseHTTPRequestHandler):
  def log_message(self,*args):pass
  def send(self,status,body):

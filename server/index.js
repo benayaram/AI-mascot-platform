@@ -36,6 +36,8 @@ const {
 const { reconcileSubscription } = await import("./billing.js");
 const { attachRealtime } = await import("./realtime.js");
 const { repo } = await import("./repository.js");
+const { installKnowledgeRoutes } = await import("./knowledge.js");
+const { installInstituteRoutes } = await import("./institute.js");
 const { installProviderRoutes } = await import("./v3-routes.js");
 const { settings } = await import("./customer-providers.js");
 const { requireCompute } = await import("./runtime.js");
@@ -244,7 +246,7 @@ app.use("/api", (req, res, next) => {
     req.user.role !== "admin" &&
     !req.user.email_verified &&
     req.method !== "GET" &&
-    /^\/(chat|v1|tts|transcribe|images|avatars\/generate|videos|keys|embeds|provider-preview|billing\/checkout)/.test(
+    /^\/(chat|v1|tts|transcribe|images|avatars\/generate|videos|keys|embeds|provider-preview|lessons|knowledge|institute|billing\/checkout)/.test(
       req.path,
     )
   )
@@ -284,6 +286,8 @@ app.get("/api/health", async (req, res) =>
   res.json({ status: "ok", storage: store.engine, providers: providers() }),
 );
 app.use("/api/v1", auth, apiAccess);
+installKnowledgeRoutes({ app, auth, parse, z, fail });
+installInstituteRoutes({ app, auth, parse, z, fail, avatarFor });
 app.get("/api/models", auth, async (req, res) => {
   const configured = [
     ["chat", process.env.LOCAL_AI_URL?.replace(/\/v1$/, "")],
@@ -758,10 +762,11 @@ app.post(["/api/chat", "/api/v1/chat"], auth, async (req, res) => {
   const history = c ? (await repo.history(c.id)).reverse() : [];
   const refund = await reserve(req.user, "messages");
   try {
-    const result = await reply(avatar, [
-      ...history,
-      { role: "user", content: v.message },
-    ]);
+    const result = await reply(
+      avatar,
+      [...history, { role: "user", content: v.message }],
+      { userId: req.user.id },
+    );
     if (!c) {
       c = { id: randomUUID() };
       await repo.createConversation(
@@ -811,26 +816,34 @@ app.post(["/api/tts", "/api/v1/tts"], auth, async (req, res) => {
     throw e;
   }
 });
-app.post("/api/transcribe", auth, upload.single("audio"), async (req, res) => {
-  if (!process.env.LOCAL_SPEECH_URL)
-    throw unavailable("Local speech recognition");
-  if (!req.file) fail(400, "Upload an audio recording");
-  const refund = await reserve(req.user, "voice");
-  try {
-    const r = await providerFetch(
-      process.env.LOCAL_SPEECH_URL + "/transcribe",
-      {
-        method: "POST",
-        headers: { "Content-Type": req.file.mimetype },
-        body: req.file.buffer,
-      },
-    );
-    res.json(await r.json());
-  } catch (e) {
-    await refund();
-    throw e;
-  }
-});
+app.post(
+  ["/api/transcribe", "/api/v1/transcribe"],
+  auth,
+  upload.single("audio"),
+  async (req, res) => {
+    if (!process.env.LOCAL_SPEECH_URL)
+      throw unavailable("Local speech recognition");
+    if (!req.file) fail(400, "Upload an audio recording");
+    const refund = await reserve(req.user, "voice");
+    try {
+      const r = await providerFetch(
+        process.env.LOCAL_SPEECH_URL + "/transcribe",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": req.file.mimetype,
+            "X-Language": (await settings(req.user.id)).language,
+          },
+          body: req.file.buffer,
+        },
+      );
+      res.json(await r.json());
+    } catch (e) {
+      await refund();
+      throw e;
+    }
+  },
+);
 app.get("/api/keys", auth, async (req, res) =>
   res.json({ keys: await repo.keys(req.user.id) }),
 );
@@ -924,7 +937,10 @@ app.post("/api/embed/:id/chat", embedLimit, async (req, res) => {
   const refund = await reserve(user, "messages");
   try {
     res.json(
-      await reply(a, [...v.history, { role: "user", content: v.message }]),
+      await reply(a, [...v.history, { role: "user", content: v.message }], {
+        userId: user.id,
+        useKnowledge: false,
+      }),
     );
   } catch (e) {
     await refund();

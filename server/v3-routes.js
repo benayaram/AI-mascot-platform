@@ -32,6 +32,7 @@ export function installProviderRoutes({
       credentials: await credentialSummaries(req.user.id),
       catalog: providerCatalog,
       compute: await computeCapabilities(),
+      edge_enabled: process.env.ENABLE_EDGE_TTS === "true",
       storage: store.engine,
     }),
   );
@@ -87,6 +88,7 @@ export function installProviderRoutes({
         user_id: req.user.id,
         ...(p.tts === req.params.provider ? { tts: "local" } : {}),
         ...(p.video === req.params.provider ? { video: "local" } : {}),
+        ...(p.chat === req.params.provider ? { chat: "local" } : {}),
       });
       await audit(req.user.id, "provider.deleted", {
         provider: req.params.provider,
@@ -106,16 +108,50 @@ export function installProviderRoutes({
   app.put("/api/provider-settings", auth, privateSession, async (req, res) => {
     const v = parse(
       z.object({
-        tts: z.enum(["local", "gemini", "openai", "elevenlabs"]),
+        tts: z.enum([
+          "local",
+          "espeak",
+          "edge",
+          "google",
+          "gemini",
+          "openai",
+          "elevenlabs",
+        ]),
+        chat: z.enum(["local", "gemini_chat"]).optional(),
+        language: z
+          .enum(["en", "te", "hi", "ta", "kn", "es", "auto"])
+          .optional(),
+        chat_model: z
+          .string()
+          .regex(/^[a-zA-Z0-9._-]+$/)
+          .max(150)
+          .optional(),
+        local_fallback: z.boolean().optional(),
+        grounded_only: z.boolean().optional(),
+        edge_voice: z
+          .enum([
+            "te-IN-ShrutiNeural",
+            "te-IN-MohanNeural",
+            "hi-IN-SwaraNeural",
+            "en-US-AriaNeural",
+            "ta-IN-PallaviNeural",
+            "kn-IN-SapnaNeural",
+          ])
+          .optional(),
         video: z.enum(["local", "heygen"]),
         compute: z.enum(["cpu", "gpu"]),
         quality: z.enum(["fast", "neural"]),
       }),
       req.body,
     );
+    if (v.tts === "edge" && process.env.ENABLE_EDGE_TTS !== "true")
+      fail(503, "Edge TTS is disabled by the operator");
     const existing = await credentialSummaries(req.user.id);
-    for (const p of [v.tts, v.video])
-      if (p !== "local" && !existing.some((c) => c.provider === p))
+    for (const p of [v.tts, v.video, v.chat].filter(Boolean))
+      if (
+        !["local", "edge", "espeak"].includes(p) &&
+        !existing.some((c) => c.provider === p)
+      )
         fail(400, "Save your " + p + " key first");
     if (v.compute === "gpu" && !(await computeCapabilities()).gpu.available)
       fail(

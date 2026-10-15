@@ -33,6 +33,9 @@ if (mongo) {
     "api_keys",
     "videos",
     "embeds",
+    "knowledge",
+    "lessons",
+    "lesson_assets",
   ])
     await remote.collection(name).createIndex({ user_id: 1 });
 } else {

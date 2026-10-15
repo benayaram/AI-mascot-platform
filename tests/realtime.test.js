@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import WebSocket from "ws";
 const enabled = process.env.BENAI_TEST_REALTIME === "1";
 let child, session, bob;
-const base = "http://127.0.0.1:3150",
+const base = "http://127.0.0.1:3156",
   folder = mkdtempSync(join(tmpdir(), "benai-realtime-")),
   pass = randomBytes(16).toString("hex");
 const sockets = new Set(),
@@ -56,7 +56,7 @@ before(async () => {
   child = spawn(process.execPath, ["server/index.js"], {
     env: {
       ...process.env,
-      PORT: "3150",
+      PORT: "3156",
       APP_URL: base,
       DATA_DIR: folder,
       DEMO_MODE: "false",

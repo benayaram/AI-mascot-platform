@@ -1,0 +1,29 @@
+{
+  "artifacts": [
+    {
+      "url": "https://deb.debian.org/debian/pool/main/e/espeak-ng/espeak-ng_1.52.0+dfsg-5_amd64.deb",
+      "path": "espeak-packages/espeak-ng.deb",
+      "sha256": "b64da7b5e21b3540a5cfe5a2fd5c650f6f366ffccb9b810eb337ea4677435d31"
+    },
+    {
+      "url": "https://deb.debian.org/debian/pool/main/e/espeak-ng/espeak-ng-data_1.52.0+dfsg-5_amd64.deb",
+      "path": "espeak-packages/espeak-ng-data.deb",
+      "sha256": "7c239b30e419897313b5b8c98123cf3ec871cfedbf43bbb956b985a492e37f19"
+    },
+    {
+      "url": "https://deb.debian.org/debian/pool/main/e/espeak-ng/libespeak-ng1_1.52.0+dfsg-5_amd64.deb",
+      "path": "espeak-packages/libespeak-ng1.deb",
+      "sha256": "845886095f5be3ba7680c8e15de068f76d67600275cbd7b6f6c7d00e53c05b34"
+    },
+    {
+      "url": "https://deb.debian.org/debian/pool/main/p/pcaudiolib/libpcaudio0_1.3-1_amd64.deb",
+      "path": "espeak-packages/libpcaudio0.deb",
+      "sha256": "db95c30434707a60774ed9ad0193ba680e061ae7d99f354a1a93f147317a4ea5"
+    },
+    {
+      "url": "https://deb.debian.org/debian/pool/main/s/sonic/libsonic0_0.2.0-13+b1_amd64.deb",
+      "path": "espeak-packages/libsonic0.deb",
+      "sha256": "07a1d67546465f07638be05f0931d79e0d6bb1a7831e1f67ac6611d1ba297009"
+    }
+  ]
+}

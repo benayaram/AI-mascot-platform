@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 const enabled = process.env.BENAI_TEST_NEURAL === "1";
 test(
   "self-hosted realistic video is rendered, persisted, playable and private",
-  { skip: !enabled, timeout: 240000 },
+  { skip: !enabled, timeout: 600000 },
   async () => {
     const folder = mkdtempSync(join(tmpdir(), "benai-neural-api-")),
       base = "http://127.0.0.1:3144";
@@ -68,7 +68,7 @@ test(
       assert.equal(create.status, 202);
       const { id } = await create.json();
       let video;
-      for (let i = 0; i < 210; i++) {
+      for (let i = 0; i < 570; i++) {
         video = (
           await (await fetch(base + "/api/videos/" + id, { headers })).json()
         ).video;
@@ -76,9 +76,9 @@ test(
         await new Promise((r) => setTimeout(r, 1000));
       }
       assert.equal(video.status, "completed", video.error);
-      assert.equal(video.model, "MuseTalk-1.5");
+      assert.equal(video.model, "MuseTalk-1.5-aligned-v4");
       assert.equal(video.device, "cpu");
-      assert.equal(video.fps, 12);
+      assert.equal(video.fps, 25);
       assert.ok(video.render_ms > 0);
       assert.ok(video.duration > 1);
       const file = await fetch(base + video.url, { headers });

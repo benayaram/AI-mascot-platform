@@ -1,3 +1,11 @@
+# BENAI V4 QC verdict
+
+See [current V4 evidence, measurements and remaining limitations](V4-QC.md). V4 is an invited-pilot release, with working multilingual routing and lecture exports. CPU neural video remains slow; native-speaker Telugu recognition, actual provider accounts and public deployment are not certified.
+
+The V3 evidence below is retained as historical validation; its 12 fps/neural timing and test totals describe the previous release.
+
+---
+
 # BENAI V3 QC verdict
 
 Release `3.0.0-beta.1` on `feat/benai-v3-low-latency-byok`.

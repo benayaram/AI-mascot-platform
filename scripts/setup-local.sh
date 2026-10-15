@@ -6,8 +6,10 @@ export BENAI_RUNTIME_DIR
 command -v ffmpeg >/dev/null || { echo 'Install FFmpeg before local video rendering.' >&2; exit 1; }
 python3 scripts/download-models.py
 python3 scripts/download-models.py v2-models-manifest.json
+python3 scripts/download-models.py multilingual-manifest.json
 python3 scripts/download-models.py browser-model-manifest.json
 node scripts/prepare-browser-assets.js
+bash scripts/setup-budget-speech.sh
 mkdir -p "$BENAI_RUNTIME_DIR/llama"
 if [ ! -x "$BENAI_RUNTIME_DIR/llama/build/bin/llama-server" ]; then
   unzip -q "$BENAI_RUNTIME_DIR/llama.zip" -d "$BENAI_RUNTIME_DIR/llama"

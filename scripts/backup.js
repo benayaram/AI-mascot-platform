@@ -57,7 +57,7 @@ function verify() {
       name.includes("..") ||
       name.startsWith("/") ||
       !name.match(
-        /^(snapshot\.json|\.provider-master-key|uploads\/[a-f0-9-]+\.(png|jpg|webp)|videos\/[a-f0-9-]+\.mp4)$/,
+        /^(snapshot\.json|\.provider-master-key|uploads\/[a-f0-9-]+\.(png|jpg|webp)|videos\/[a-f0-9-]+\.mp4|institute\/[a-f0-9-]+(?:\.(?:mp4|png)|-captions\.vtt))$/,
       )
     )
       throw Error("Unsafe backup path");
@@ -146,7 +146,7 @@ try {
       join(target, "snapshot.json"),
       JSON.stringify({ version: 1, documents, usage }),
     );
-    for (const folder of ["uploads", "videos"])
+    for (const folder of ["uploads", "videos", "institute"])
       if (existsSync(join(source, folder)))
         for (const name of files(join(source, folder))) {
           const output = join(target, folder, name);

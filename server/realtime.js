@@ -175,9 +175,9 @@ export function attachRealtime(server) {
           );
         const prefs = await settings(user.id);
         if (
-          !process.env.LOCAL_AI_URL ||
+          (!process.env.LOCAL_AI_URL && prefs.chat === "local") ||
           (v.audio && !process.env.LOCAL_SPEECH_URL) ||
-          (!process.env.LOCAL_SPEECH_URL && prefs.tts === "local")
+          (v.speak && !process.env.LOCAL_SPEECH_URL && prefs.tts === "local")
         )
           throw unavailable("Realtime models");
         refundMessage = await reserve(user, "messages");
@@ -197,7 +197,10 @@ export function attachRealtime(server) {
             {
               method: "POST",
               signal,
-              headers: { "Content-Type": "audio/webm" },
+              headers: {
+                "Content-Type": "audio/webm",
+                "X-Language": prefs.language,
+              },
               body: bytes,
             },
           );
@@ -217,6 +220,8 @@ export function attachRealtime(server) {
           [...history, { role: "user", content: text }],
           {
             signal,
+            userId: user.id,
+            onSources: (sources) => send({ type: "sources", sources }),
             onToken: (token) => {
               if (first) {
                 first = false;

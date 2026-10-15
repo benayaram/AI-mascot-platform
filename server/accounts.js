@@ -199,6 +199,9 @@ export function installAccountRoutes({
       ),
       leads: await store.find("leads", { user_id: id }),
       demos: await store.find("demos", { user_id: id }),
+      knowledge: await store.find("knowledge", { user_id: id }),
+      lessons: await store.find("lessons", { user_id: id }),
+      lesson_assets: await store.find("lesson_assets", { user_id: id }),
       settings: await store.one("customer_settings", { id }),
       usage: await store.find("usage", { user_id: id }),
     };
@@ -226,7 +229,14 @@ export function installAccountRoutes({
         "Cancel your paid subscription in the billing portal before deleting your account",
       );
     if (
-      await store.one("videos", { user_id: req.user.id, status: "processing" })
+      (await store.one("videos", {
+        user_id: req.user.id,
+        status: "processing",
+      })) ||
+      (await store.one("lessons", {
+        user_id: req.user.id,
+        status: "processing",
+      }))
     )
       fail(409, "Wait for your active video job before deleting the account");
     const id = req.user.id;
@@ -240,6 +250,19 @@ export function installAccountRoutes({
         );
       rmSync(join(dataDir, "videos", video.id + ".mp4"), { force: true });
     }
+    for (const lesson of await store.find("lessons", { user_id: id })) {
+      if (lesson.storage_key && r2)
+        await r2.send(
+          new DeleteObjectCommand({
+            Bucket: process.env.R2_BUCKET,
+            Key: lesson.storage_key,
+          }),
+        );
+      for (const ext of [".mp4", "-captions.vtt"])
+        rmSync(join(dataDir, "institute", lesson.id + ext), { force: true });
+    }
+    for (const asset of await store.find("lesson_assets", { user_id: id }))
+      rmSync(join(dataDir, "institute", asset.id + asset.ext), { force: true });
     for (const asset of await store.find("assets", { owner_id: id }))
       rmSync(join(dataDir, "uploads", asset.id), { force: true });
     for (const c of await store.find("conversations", { user_id: id }))
@@ -248,6 +271,9 @@ export function installAccountRoutes({
       "sessions",
       "api_keys",
       "provider_credentials",
+      "knowledge",
+      "lessons",
+      "lesson_assets",
       "account_tokens",
       "conversations",
       "videos",

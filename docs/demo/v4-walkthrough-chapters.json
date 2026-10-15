@@ -1,0 +1,37 @@
+{
+  "chapters": [
+    {
+      "seconds": 0,
+      "title": "BENAI V4: running full-stack product"
+    },
+    {
+      "seconds": 2,
+      "title": "Private knowledge sources"
+    },
+    {
+      "seconds": 5,
+      "title": "A real local-model answer, spoken by the avatar"
+    },
+    {
+      "seconds": 16,
+      "title": "Telugu and provider choice; hardware availability is checked"
+    },
+    {
+      "seconds": 20,
+      "title": "Institute mode: an editable lesson with supporting video"
+    },
+    {
+      "seconds": 24,
+      "title": "Real MP4 export with speech, animated avatar, visuals and captions"
+    },
+    {
+      "seconds": 71,
+      "title": "Lesson questions use the real AI backend"
+    },
+    {
+      "seconds": 79,
+      "title": "Customer integrations and plan limits"
+    }
+  ],
+  "browser_errors": []
+}

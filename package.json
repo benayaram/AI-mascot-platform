@@ -1,6 +1,6 @@
 {
   "name": "benai-studio",
-  "version": "3.0.0-beta.1",
+  "version": "4.0.0-beta.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -29,12 +29,19 @@
     "backup": "node scripts/backup.js backup",
     "backup:verify": "node scripts/backup.js verify",
     "backup:restore": "node scripts/backup.js restore",
-    "monitor": "node scripts/monitor.js"
+    "monitor": "node scripts/monitor.js",
+    "lecture:studio": "remotion studio lecture/index.jsx",
+    "test:v4": "node --test tests/v4.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
     "@aws-sdk/s3-request-presigner": "^3.1150.0",
     "@mediapipe/tasks-vision": "^1.1.0",
+    "@remotion/bundler": "4.0.534",
+    "@remotion/cli": "4.0.534",
+    "@remotion/media": "4.0.534",
+    "@remotion/player": "4.0.534",
+    "@remotion/renderer": "4.0.534",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
@@ -42,9 +49,11 @@
     "mongodb": "^7.7.0",
     "multer": "^2.0.2",
     "nodemailer": "^10.1.0",
+    "pdf-parse": "2.4.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.9.0",
+    "remotion": "4.0.534",
     "sharp": "^0.35.5",
     "stripe": "^19.0.0",
     "ws": "^8.22.0",

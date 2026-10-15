@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/config.json",
+      "path": "models/whisper-multilingual/config.json",
+      "blobId": "e5047537059bd8f182d9ca64c470201585015187"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/model.bin",
+      "path": "models/whisper-multilingual/model.bin",
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/tokenizer.json",
+      "path": "models/whisper-multilingual/tokenizer.json",
+      "blobId": "7818adb6de9fa3064d3ff81226fdd675be1f6344"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/vocabulary.txt",
+      "path": "models/whisper-multilingual/vocabulary.txt",
+      "blobId": "c9074644d9d1205686f16d411564729461324b75"
+    }
+  ]
+}

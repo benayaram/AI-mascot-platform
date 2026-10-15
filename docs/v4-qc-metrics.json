@@ -1,0 +1,64 @@
+{
+  "fast": {
+    "duration": 1.2655,
+    "render_ms": 653,
+    "fps": 24,
+    "model": "BENAI-audio-driven-warp",
+    "device": "cpu",
+    "quality": "fast",
+    "wall_seconds": 0.66
+  },
+  "neural": {
+    "duration": 1.2655,
+    "render_ms": 138281,
+    "fps": 25,
+    "model": "MuseTalk-1.5-aligned-v4",
+    "device": "cpu",
+    "wall_seconds": 138.29
+  },
+  "institute": {
+    "duration": 10.125,
+    "render_ms": 33863,
+    "scene_durations": [
+      5.375,
+      4.75
+    ],
+    "scenes": 2
+  },
+  "recording": {
+    "duration": 84.16,
+    "explanatory_voiceover": true,
+    "browser_errors": []
+  },
+  "limits": {
+    "gpu_tested": false,
+    "real_provider_keys_tested": false,
+    "telugu_native_speaker_accuracy_tested": false,
+    "edge_result": "HTTP 403"
+  },
+  "neural_api": {
+    "created_at": "2026-10-15T18:03:08.882Z",
+    "avatar_id": "amara",
+    "status": "completed",
+    "provider_id": "local",
+    "compute": "cpu",
+    "quality": "neural",
+    "storage_key": null,
+    "duration": 1.4396875,
+    "model": "MuseTalk-1.5-aligned-v4",
+    "render_ms": 181746,
+    "fps": 25,
+    "device": "cpu",
+    "total_ms": 182234
+  },
+  "automated_checks": {
+    "default_pass": 49,
+    "default_skipped": 8,
+    "browser_pass": 14,
+    "realtime_pass": 5,
+    "fast_api_pass": 1,
+    "neural_api_pass": 1,
+    "cloud_pass": 2,
+    "total_distinct_pass": 72
+  }
+}

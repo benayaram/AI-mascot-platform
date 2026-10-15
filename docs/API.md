@@ -1,4 +1,6 @@
-# BENAI V3 APIs
+# BENAI APIs
+
+V4 adds [institute, knowledge, multilingual speech and customer model settings](V4.md#customer-institute-api). Existing routes below remain supported.
 
 ## REST
 

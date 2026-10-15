@@ -1,3 +1,9 @@
+# V4 model and rendering additions
+
+Whisper small (`Systran/faster-whisper-small`, MIT) is pinned by upstream revision and publisher checksums in `scripts/multilingual-manifest.json`. eSpeak NG 1.52.0 (GPL-3.0-or-later) is a separate offline executable, with official Debian package checksums in `scripts/espeak-manifest.json`; copyright notices remain inside the private runtime. Remotion 4.0.534 is free for qualifying individuals/nonprofits/companies up to three employees, with a company license required beyond that threshold. See `node_modules/remotion/LICENSE.md` and [V4 operations](V4.md).
+
+These additions do not make local Qwen or Whisper universally accurate, and eSpeak voices are robotic. Google/Gemini speech are optional customer-owned external services. Edge is unofficial, opt-in and was unavailable here (HTTP 403). No Meta MMS noncommercial voices were added.
+
 # V3 local model attribution and commercial-use screening
 
 | Component            | Included selection                     | Published terms/source                                                                                                                                                     |

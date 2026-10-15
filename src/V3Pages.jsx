@@ -74,6 +74,12 @@ export function AISettings() {
             await api("/provider-settings", {
               method: "PUT",
               body: {
+                chat: prefs.chat,
+                language: prefs.language,
+                chat_model: prefs.chat_model,
+                local_fallback: prefs.local_fallback,
+                grounded_only: prefs.grounded_only,
+                edge_voice: prefs.edge_voice,
                 tts: prefs.tts,
                 video: prefs.video,
                 compute: prefs.compute,
@@ -86,12 +92,99 @@ export function AISettings() {
       >
         <div className="settings-grid">
           <label>
+            Answer model
+            <select
+              value={prefs.chat}
+              onChange={(e) => set("chat", e.target.value)}
+            >
+              <option value="local">Local Qwen · CPU, no API key</option>
+              <option value="gemini_chat">Google Gemini · your API key</option>
+            </select>
+          </label>
+          <label>
+            Conversation language
+            <select
+              value={prefs.language}
+              onChange={(e) => set("language", e.target.value)}
+            >
+              {Object.entries({
+                en: "English",
+                te: "Telugu",
+                hi: "Hindi",
+                ta: "Tamil",
+                kn: "Kannada",
+                es: "Spanish",
+                auto: "Detect language",
+              }).map(([v, n]) => (
+                <option key={v} value={v}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Gemini answer model
+            <input
+              value={prefs.chat_model}
+              maxLength={150}
+              onChange={(e) => set("chat_model", e.target.value)}
+            />
+          </label>
+          <label>
+            Experimental Edge voice
+            <select
+              value={prefs.edge_voice}
+              onChange={(e) => set("edge_voice", e.target.value)}
+            >
+              {[
+                "te-IN-ShrutiNeural",
+                "te-IN-MohanNeural",
+                "hi-IN-SwaraNeural",
+                "en-US-AriaNeural",
+                "ta-IN-PallaviNeural",
+                "kn-IN-SapnaNeural",
+              ].map((v) => (
+                <option key={v}>{v}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={prefs.grounded_only}
+            onChange={(e) => set("grounded_only", e.target.checked)}
+          />
+          Only answer from my sources
+        </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={prefs.local_fallback}
+            onChange={(e) => set("local_fallback", e.target.checked)}
+          />
+          Allow local Qwen fallback if Gemini fails
+        </label>
+        <p className="muted">
+          Local Piper speaks English. For Telugu, select Google Cloud TTS,
+          Gemini TTS or experimental Edge speech. Edge is unofficial and may be
+          unavailable. Gemini free quotas depend on your account and provider
+          limits.
+        </p>
+        <div className="settings-grid">
+          <label>
             Speech provider
             <select
               value={prefs.tts}
               onChange={(e) => set("tts", e.target.value)}
             >
               <option value="local">Local Piper · no provider bill</option>
+              <option value="espeak">
+                Offline multilingual · robotic voice, no bill
+              </option>
+              <option value="edge" disabled={!data.edge_enabled}>
+                Edge TTS · experimental{!data.edge_enabled ? " (disabled)" : ""}
+              </option>
               {Object.entries(data.catalog)
                 .filter(([, p]) => p.kind === "tts")
                 .map(([id, p]) => (
@@ -198,7 +291,7 @@ export function AISettings() {
                   maxLength={2048}
                 />
               </label>
-              {p.kind === "tts" && (
+              {["tts", "chat"].includes(p.kind) && (
                 <label>
                   Model
                   <select name="model" defaultValue={saved?.model || p.model}>

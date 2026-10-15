@@ -23,6 +23,20 @@ else {
 if (master.length !== 32)
   throw Error("BYOK_MASTER_KEY must decode to exactly 32 bytes");
 export const providerCatalog = {
+  gemini_chat: {
+    name: "Google Gemini answers",
+    kind: "chat",
+    models: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+    model: "gemini-2.5-flash-lite",
+    voice: "",
+  },
+  google: {
+    name: "Google Cloud TTS",
+    kind: "tts",
+    models: ["standard"],
+    model: "standard",
+    voice: "te-IN-Standard-A",
+  },
   gemini: {
     name: "Google Gemini TTS",
     kind: "tts",
@@ -57,6 +71,12 @@ export const providerCatalog = {
   },
 };
 export const defaultSettings = {
+  chat: "local",
+  language: "en",
+  chat_model: "gemini-2.5-flash-lite",
+  local_fallback: false,
+  grounded_only: false,
+  edge_voice: "te-IN-ShrutiNeural",
   tts: "local",
   video: "local",
   compute: "cpu",
@@ -165,6 +185,8 @@ export async function externalRequest(
 ) {
   const roots = {
     gemini: "https://generativelanguage.googleapis.com",
+    gemini_chat: "https://generativelanguage.googleapis.com",
+    google: "https://texttospeech.googleapis.com",
     openai: "https://api.openai.com",
     elevenlabs: "https://api.elevenlabs.io",
     heygen: "https://api.heygen.com",
@@ -211,10 +233,85 @@ export function pcmWav(bytes, sampleRate = 24000) {
 export async function customerSpeech(userId, text, signal, onAudio) {
   const prefs = await settings(userId);
   if (prefs.tts === "local") return null;
+  if (prefs.tts === "espeak") {
+    if (!process.env.LOCAL_SPEECH_URL)
+      throw Object.assign(Error("Start the local speech service"), {
+        status: 503,
+      });
+    const r = await fetch(process.env.LOCAL_SPEECH_URL + "/tts-espeak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(30000)])
+        : AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        text,
+        language:
+          prefs.language === "auto"
+            ? /[\u0c00-\u0c7f]/.test(text)
+              ? "te"
+              : "en"
+            : prefs.language,
+      }),
+    });
+    if (!r.ok)
+      throw Object.assign(
+        Error(
+          "Offline multilingual voice unavailable. Install eSpeak NG with scripts/setup-budget-speech.sh.",
+        ),
+        { status: 503 },
+      );
+    return Buffer.from(await r.arrayBuffer());
+  }
+  if (prefs.tts === "edge") {
+    if (process.env.ENABLE_EDGE_TTS !== "true")
+      throw Object.assign(
+        Error(
+          "Edge TTS is disabled by the operator. Use Google Cloud TTS or a local English voice.",
+        ),
+        { status: 503 },
+      );
+    const r = await fetch(process.env.LOCAL_SPEECH_URL + "/tts-edge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: prefs.edge_voice }),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
+        : AbortSignal.timeout(60000),
+    });
+    if (!r.ok)
+      throw Object.assign(
+        Error(
+          "Experimental Edge speech is unavailable. Choose an official TTS provider or local English.",
+        ),
+        { status: 502 },
+      );
+    return Buffer.from(await r.arrayBuffer());
+  }
   const name = prefs.tts,
     c = await credential(userId, name);
   let response;
   const headers = { "Content-Type": "application/json" };
+  if (name === "google") {
+    const languageCode = (c.voice || "te-IN-Standard-A")
+      .split("-")
+      .slice(0, 2)
+      .join("-");
+    const r = await externalRequest(name, "/v1/text:synthesize", {
+      method: "POST",
+      headers: { ...headers, "X-Goog-Api-Key": c.key },
+      signal,
+      body: JSON.stringify({
+        input: { text },
+        voice: { languageCode, name: c.voice },
+        audioConfig: { audioEncoding: "LINEAR16" },
+      }),
+    });
+    const d = await r.json();
+    if (!d.audioContent)
+      throw Object.assign(Error("Google returned no speech"), { status: 502 });
+    return Buffer.from(d.audioContent, "base64");
+  }
   if (name === "gemini") {
     headers["x-goog-api-key"] = c.key;
     let data;
@@ -354,22 +451,23 @@ export async function customerSpeech(userId, text, signal, onAudio) {
 }
 export async function discoverProvider(userId, name) {
   const c = await credential(userId, name),
-    auth =
-      name === "gemini"
-        ? { "x-goog-api-key": c.key }
-        : name === "elevenlabs"
-          ? { "xi-api-key": c.key }
-          : name === "heygen"
-            ? { "X-Api-Key": c.key }
-            : { Authorization: "Bearer " + c.key };
+    auth = ["gemini", "gemini_chat", "google"].includes(name)
+      ? { "x-goog-api-key": c.key }
+      : name === "elevenlabs"
+        ? { "xi-api-key": c.key }
+        : name === "heygen"
+          ? { "X-Api-Key": c.key }
+          : { Authorization: "Bearer " + c.key };
   const path =
-    name === "gemini"
-      ? "/v1beta/models"
-      : name === "openai"
-        ? "/v1/models"
-        : name === "elevenlabs"
-          ? "/v1/voices"
-          : "/v2/avatars";
+    name === "google"
+      ? "/v1/voices"
+      : ["gemini", "gemini_chat"].includes(name)
+        ? "/v1beta/models"
+        : name === "openai"
+          ? "/v1/models"
+          : name === "elevenlabs"
+            ? "/v1/voices"
+            : "/v2/avatars";
   const d = await (await externalRequest(name, path, { headers: auth })).json();
   const heygenVoices =
     name === "heygen"
@@ -385,20 +483,28 @@ export async function discoverProvider(userId, name) {
     { tested_at: new Date().toISOString() },
   );
   return {
-    models:
-      name === "gemini"
-        ? (d.models || [])
-            .filter((m) => /tts/i.test(m.name))
-            .map((m) => m.name.replace("models/", ""))
-        : name === "openai"
-          ? (d.data || []).filter((m) => /tts/i.test(m.id)).map((m) => m.id)
-          : providerCatalog[name].models,
+    models: ["gemini", "gemini_chat"].includes(name)
+      ? (d.models || [])
+          .filter((m) =>
+            name === "gemini_chat"
+              ? !/tts|embedding|image/i.test(m.name)
+              : /tts/i.test(m.name),
+          )
+          .map((m) => m.name.replace("models/", ""))
+      : name === "openai"
+        ? (d.data || []).filter((m) => /tts/i.test(m.id)).map((m) => m.id)
+        : providerCatalog[name].models,
     voices:
-      name === "elevenlabs"
-        ? (d.voices || []).map((v) => ({ id: v.voice_id, name: v.name }))
-        : name === "heygen"
-          ? (heygenVoices || []).map((v) => ({ id: v.voice_id, name: v.name }))
-          : [],
+      name === "google"
+        ? (d.voices || []).map((v) => ({ id: v.name, name: v.name }))
+        : name === "elevenlabs"
+          ? (d.voices || []).map((v) => ({ id: v.voice_id, name: v.name }))
+          : name === "heygen"
+            ? (heygenVoices || []).map((v) => ({
+                id: v.voice_id,
+                name: v.name,
+              }))
+            : [],
     avatars:
       name === "heygen"
         ? (d.data?.avatars || []).map((a) => ({

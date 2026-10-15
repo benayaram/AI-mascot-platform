@@ -248,10 +248,11 @@ export function installGrowthRoutes({
       );
     const refund = await reserve(user, "messages");
     try {
-      const result = await reply(avatar, [
-        ...v.history,
-        { role: "user", content: v.message },
-      ]);
+      const result = await reply(
+        avatar,
+        [...v.history, { role: "user", content: v.message }],
+        { userId: user.id, useKnowledge: false },
+      );
       await store.insert("demo_events", {
         user_id: user.id,
         demo_id: demo.id,

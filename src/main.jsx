@@ -1,3 +1,5 @@
+const Institute = React.lazy(() => import("./Institute"));
+import Knowledge from "./Knowledge";
 import React, {
   useState,
   useEffect,
@@ -239,6 +241,15 @@ function App() {
               <Route path="/studio" element={<Studio />} />
               <Route path="/conversations" element={<Conversations />} />
               <Route path="/videos" element={<Videos />} />
+              <Route
+                path="/institute"
+                element={
+                  <React.Suspense fallback={<p>Loading lesson studio…</p>}>
+                    <Institute />
+                  </React.Suspense>
+                }
+              />
+              <Route path="/knowledge" element={<Knowledge />} />
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/billing" element={<Billing />} />
               <Route path="/admin" element={<Admin />} />
@@ -393,7 +404,7 @@ function Landing() {
         </div>
         <section className="landing-section">
           <span className="eyebrow">
-            BENAI V3 · YOUR CHARACTERS. YOUR VOICE.
+            BENAI V4 · YOUR CHARACTERS. YOUR VOICE.
           </span>
           <div className="section-heading">
             <div>
@@ -695,6 +706,8 @@ const navItems = [
   [Mic, "Conversation studio", "/studio"],
   [MessageSquare, "Conversations", "/conversations"],
   [Video, "Video studio", "/videos"],
+  [Video, "Institute lessons", "/institute"],
+  [MessageSquare, "Knowledge sources", "/knowledge"],
   [Code2, "Integrations", "/integrations"],
   [Settings, "AI & compute", "/ai-settings"],
   [Sparkles, "Grow your audience", "/growth"],
@@ -839,7 +852,7 @@ function Layout() {
             <span className="status-pill">
               <span className="live-dot" />
               {providers?.ai
-                ? "V3 · Local or your providers"
+                ? "V4 · Multilingual studio"
                 : providers?.demo
                   ? "Demo mode"
                   : "AI offline"}
@@ -1791,12 +1804,14 @@ function Studio() {
       toast(e.message, "error");
     }
   }
+  const [sources, setSources] = useState([]);
   const [timing, setTiming] = useState(null),
     [modelState, setModelState] = useState("ready");
   const activeTurn = useRef(null);
   const realtime = useRealtime({
     onInterrupt: stopAudio,
     onEvent: (event) => {
+      if (event.type === "sources") setSources(event.sources);
       if (event.type === "state") setModelState(event.state);
       if (event.type === "transcript" && activeTurn.current?.audio)
         setMessages((m) => [...m, { role: "user", content: event.text }]);
@@ -1991,6 +2006,16 @@ function Studio() {
                 : "Say hello. Make a connection."}
             </small>
           </div>
+          {sources.length > 0 && (
+            <div className="panel">
+              <strong>Reference sources</strong>
+              {sources.map((s, i) => (
+                <p key={s.id + ":" + s.index}>
+                  [{i + 1}] {s.name}
+                </p>
+              ))}
+            </div>
+          )}
           {timing && (
             <div className="rig-metrics">
               <span>First token: {timing.first_token_ms} ms</span>

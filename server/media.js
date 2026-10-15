@@ -71,6 +71,16 @@ export async function speech(text, voice = "coral", options = {}) {
     );
     if (external) return external;
   }
+  if (
+    /[^\x00-\x7F]/.test(text) &&
+    /[\u0c00-\u0c7f\u0900-\u097f\u0b80-\u0bff\u0c80-\u0cff]/.test(text)
+  )
+    throw Object.assign(
+      Error(
+        "The local Piper voices speak English. Select Google, Gemini or experimental Edge speech for this language in AI settings.",
+      ),
+      { status: 422 },
+    );
   if (!process.env.LOCAL_SPEECH_URL) throw unavailable("Local speech");
   return Buffer.from(
     await (

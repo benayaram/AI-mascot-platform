@@ -3615,3 +3615,52 @@ td select {
 .public-shell h1 {
   font-size: clamp(28px, 4vw, 44px);
 }
+
+.institute-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.1fr);
+  gap: 24px;
+  align-items: start;
+}
+.institute-grid > section {
+  min-width: 0;
+}
+.institute-preview {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 20px;
+}
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.check-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+}
+.check-label input {
+  width: 18px !important;
+  height: 18px !important;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.institute-grid textarea {
+  width: 100%;
+  resize: vertical;
+}
+@media (max-width: 1100px) {
+  .institute-grid {
+    grid-template-columns: 1fr;
+  }
+  .institute-preview {
+    position: static;
+  }
+}
